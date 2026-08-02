@@ -148,6 +148,10 @@ public class RoutingConfiguration {
 		private Map<String, GeneralRouter> routers = new LinkedHashMap<>();
 		private Map<String, String> attributes = new LinkedHashMap<>();
 		private Set<Long> impassableRoadLocations = new HashSet<>();
+		// Roads excluded for this calculation only (currently ALPR camera avoidance). Kept apart
+		// from impassableRoadLocations because Builder instances are cached per application mode
+		// and shared, so these must never leak into the user's saved "Avoid roads" list.
+		private Set<Long> transientExcludedRoads = new HashSet<>();
 		private QuadTree<Node> directionPointsBuilder;
 
 		public Builder() {
@@ -212,7 +216,9 @@ public class RoutingConfiguration {
 			i.smoothenPointsNoRoute = parseSilentFloat(getAttribute(i.router, "smoothenPointsNoRoute"), i.smoothenPointsNoRoute);
 			i.penaltyForReverseDirection = parseSilentFloat(getAttribute(i.router, "penaltyForReverseDirection"), (float) i.penaltyForReverseDirection);
 
-			i.router.setImpassableRoads(new HashSet<>(impassableRoadLocations));
+			Set<Long> excludedRoads = new HashSet<>(impassableRoadLocations);
+			excludedRoads.addAll(transientExcludedRoads);
+			i.router.setImpassableRoads(excludedRoads);
 			i.ZOOM_TO_LOAD_TILES = parseSilentInt(getAttribute(i.router, "zoomToLoadTiles"), i.ZOOM_TO_LOAD_TILES);
 			int memoryLimitMB = memoryLimits.memoryLimitMb;
 			int desirable = parseSilentInt(getAttribute(i.router, "memoryLimitInMB"), 0);
@@ -249,6 +255,20 @@ public class RoutingConfiguration {
 		public Builder setDirectionPoints(QuadTree<Node> directionPoints) {
 			this.directionPointsBuilder = directionPoints;
 			return this;
+		}
+
+		/**
+		 * Excludes the given road ids from the next configuration built here, without touching the
+		 * user's persisted impassable roads. Pass an empty set (or null) to clear: callers rebuild
+		 * on every route calculation, so nothing carries over.
+		 */
+		public Builder setTransientExcludedRoads(Set<Long> roadIds) {
+			transientExcludedRoads = roadIds == null ? new HashSet<>() : new HashSet<>(roadIds);
+			return this;
+		}
+
+		public Set<Long> getTransientExcludedRoads() {
+			return new HashSet<>(transientExcludedRoads);
 		}
 		
 		public void clearImpassableRoadLocations() {

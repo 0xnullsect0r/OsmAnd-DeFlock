@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="utf-8"?>
+<PreferenceScreen xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:title="@string/deflock_plugin_name">
+
+    <PreferenceCategory
+        android:key="alpr_display_settings"
+        android:layout="@layout/preference_category_with_descr"
+        android:title="@string/shared_string_appearance" />
+
+    <SwitchPreferenceCompat
+        android:key="show_alpr_cameras"
+        android:layout="@layout/preference_with_descr_dialog_and_switch"
+        android:summaryOff="@string/shared_string_disabled"
+        android:summaryOn="@string/shared_string_enabled"
+        android:title="@string/alpr_cameras_show"
+        tools:icon="@drawable/ic_alpr_camera" />
+
+    <net.osmand.plus.settings.preferences.ListPreferenceEx
+        android:key="alpr_view_range_m"
+        android:layout="@layout/preference_with_descr"
+        android:title="@string/alpr_view_range"
+        tools:summary="@string/alpr_view_range_description" />
+
+    <net.osmand.plus.settings.preferences.ListPreferenceEx
+        android:key="alpr_view_cone_deg"
+        android:layout="@layout/preference_with_descr"
+        android:title="@string/alpr_view_cone"
+        tools:summary="@string/alpr_view_cone_description" />
+
+    <PreferenceCategory
+        android:key="alpr_navigation_settings"
+        android:layout="@layout/preference_category_with_descr"
+        android:title="@string/shared_string_navigation" />
+
+    <SwitchPreferenceCompat
+        android:key="avoid_alpr_cameras"
+        android:layout="@layout/preference_with_descr_dialog_and_switch"
+        android:summaryOff="@string/shared_string_disabled"
+        android:summaryOn="@string/shared_string_enabled"
+        android:title="@string/alpr_avoid_cameras" />
+
+    <net.osmand.plus.settings.preferences.ListPreferenceEx
+        android:key="alpr_detour_budget_min"
+        android:layout="@layout/preference_with_descr"
+        android:title="@string/alpr_detour_budget"
+        tools:summary="@string/alpr_detour_budget_description" />
+
+    <PreferenceCategory
+        android:key="alpr_data_settings"
+        android:layout="@layout/preference_category_with_descr"
+        android:title="@string/shared_string_download" />
+
+    <Preference
+        android:key="alpr_clear_cache"
+        android:layout="@layout/preference_with_descr"
+        android:title="@string/alpr_clear_cache"
+        tools:summary="@string/alpr_clear_cache_description" />
+
+</PreferenceScreen>

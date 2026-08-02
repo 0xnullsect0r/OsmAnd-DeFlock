@@ -39,6 +39,10 @@ import net.osmand.router.RoutePlannerFrontEnd.GpxPoint;
 import net.osmand.router.RoutePlannerFrontEnd.RouteCalculationMode;
 import net.osmand.router.RoutingConfiguration.Builder;
 import net.osmand.router.RoutingConfiguration.RoutingMemoryLimits;
+import net.osmand.plus.plugins.deflock.AlprAvoidanceHelper;
+import net.osmand.plus.plugins.deflock.DeFlockPlugin;
+import net.osmand.router.deflock.AlprCameraPoint;
+import net.osmand.router.deflock.AlprRoadExclusionResolver;
 import net.osmand.router.RoutingContext;
 import net.osmand.router.TurnType;
 import net.osmand.shared.gpx.GpxFile;
@@ -292,6 +296,19 @@ public class RouteProvider {
 	}
 
 	protected RoutingEnvironment calculateRoutingEnvironment(RouteCalculationParams params, boolean calcGPXRoute, boolean skipComplex) throws IOException {
+		return calculateRoutingEnvironment(params, calcGPXRoute, skipComplex, null, false);
+	}
+
+	/**
+	 * @param excludedRoads         road ids to treat as impassable for this calculation only, or null
+	 * @param forceStandardRouting  disables hierarchical ("fast") routing. Required whenever
+	 *                              excludedRoads is used: HH rebuilds its network points from tags
+	 *                              alone, without road ids, so id-based exclusion is invisible to it
+	 *                              (see HHRoutePlanner.filterPointsBasedOnConfiguration).
+	 */
+	protected RoutingEnvironment calculateRoutingEnvironment(RouteCalculationParams params, boolean calcGPXRoute,
+	                                                         boolean skipComplex, Set<Long> excludedRoads,
+	                                                         boolean forceStandardRouting) throws IOException {
 		BinaryMapIndexReader[] files = params.ctx.getResourceManager().getRoutingMapFiles();
 		RoutePlannerFrontEnd router = new RoutePlannerFrontEnd();
 
@@ -302,14 +319,14 @@ public class RouteProvider {
 
 		RouteCalculationMethod method = settings.ROUTE_CALCULATION_METHOD.getModeValue(params.mode);
 
-		if (method.isFastRoutingPossible(params.mode)) {
+		if (method.isFastRoutingPossible(params.mode) && !forceStandardRouting) {
 			router.setDefaultHHRoutingConfig();
 		} else {
 			router.setHHRoutingConfig(null);
 		}
 
 		router.setHHRouteCpp(!settings.SAFE_MODE.get());
-		router.setUseOnlyHHRouting(method.isFastRoutingOnly(params.mode));
+		router.setUseOnlyHHRouting(method.isFastRoutingOnly(params.mode) && !forceStandardRouting);
 
 		ApproximationType approximationType = settings.APPROXIMATION_TYPE.getModeValue(params.mode);
 		router.setUseNativeApproximation(approximationType.isNativeApproximation());
@@ -320,7 +337,7 @@ public class RouteProvider {
 		if (generalRouter == null) {
 			return null;
 		}
-		RoutingConfiguration cf = initOsmAndRoutingConfig(config, params, settings, generalRouter);
+		RoutingConfiguration cf = initOsmAndRoutingConfig(config, params, settings, generalRouter, excludedRoads);
 		if (cf == null) {
 			return null;
 		}
@@ -387,7 +404,17 @@ public class RouteProvider {
 	}
 
 	protected RouteCalculationResult findVectorMapsRoute(RouteCalculationParams params, boolean calcGPXRoute) throws IOException {
-		RoutingEnvironment env = calculateRoutingEnvironment(params, calcGPXRoute, false);
+		if (AlprAvoidanceHelper.shouldAvoidCameras(params)) {
+			return findVectorMapsRouteAvoidingCameras(params, calcGPXRoute);
+		}
+		return findVectorMapsRoute(params, calcGPXRoute, null, false);
+	}
+
+	private RouteCalculationResult findVectorMapsRoute(RouteCalculationParams params, boolean calcGPXRoute,
+	                                                   Set<Long> excludedRoads, boolean forceStandardRouting)
+			throws IOException {
+		RoutingEnvironment env = calculateRoutingEnvironment(params, calcGPXRoute, false,
+				excludedRoads, forceStandardRouting);
 		if (env == null) {
 			return applicationModeNotSupported(params);
 		}
@@ -400,8 +427,93 @@ public class RouteProvider {
 		return calcOfflineRouteImpl(params, env.getRouter(), env.getCtx(), env.getComplexCtx(), st, en, inters, env.getPrecalculated());
 	}
 
+	/**
+	 * Calculates a route that stays out of ALPR camera view, giving up as much avoidance as
+	 * necessary to keep the detour inside the user's time budget.
+	 *
+	 * <p>The baseline route is calculated first, both to measure the detour against and because
+	 * its routing context already has the map tiles loaded that the camera-to-road lookup needs.
+	 * If full avoidance costs too much, exclusions are dropped a road class at a time, starting
+	 * with motorways - the roads that are most expensive to route around. If nothing fits the
+	 * budget, the user gets the plain fastest route.
+	 */
+	private RouteCalculationResult findVectorMapsRouteAvoidingCameras(RouteCalculationParams params,
+	                                                                  boolean calcGPXRoute) throws IOException {
+		DeFlockPlugin plugin = AlprAvoidanceHelper.getPlugin();
+		if (plugin == null) {
+			return findVectorMapsRoute(params, calcGPXRoute, null, false);
+		}
+		plugin.setLastAvoidanceOutcome(null);
+
+		RoutingEnvironment baseEnv = calculateRoutingEnvironment(params, calcGPXRoute, false, null, true);
+		if (baseEnv == null) {
+			return applicationModeNotSupported(params);
+		}
+		LatLon st = new LatLon(params.start.getLatitude(), params.start.getLongitude());
+		LatLon en = new LatLon(params.end.getLatitude(), params.end.getLongitude());
+		List<LatLon> inters = params.intermediates != null
+				? new ArrayList<>(params.intermediates) : new ArrayList<LatLon>();
+
+		RouteCalculationResult baseline = calcOfflineRouteImpl(params, baseEnv.getRouter(), baseEnv.getCtx(),
+				baseEnv.getComplexCtx(), st, en, inters, baseEnv.getPrecalculated());
+		if (!baseline.isCalculated() || params.calculationProgress.isCancelled) {
+			return baseline;
+		}
+
+		AlprRoadExclusionResolver.Result watched;
+		try {
+			List<AlprCameraPoint> cameras = AlprAvoidanceHelper.getCorridorCameras(params.ctx, params);
+			if (cameras.isEmpty()) {
+				plugin.setLastAvoidanceOutcome(new AlprAvoidanceHelper.Outcome(0, 0, 0, false));
+				return baseline;
+			}
+			RoutingContext lookupCtx = baseEnv.getComplexCtx() != null ? baseEnv.getComplexCtx() : baseEnv.getCtx();
+			watched = AlprRoadExclusionResolver.resolve(lookupCtx, cameras,
+					plugin.ALPR_VIEW_RANGE_M.getModeValue(params.mode),
+					plugin.ALPR_VIEW_CONE_DEG.getModeValue(params.mode));
+		} catch (IOException | RuntimeException e) {
+			log.warn("Could not resolve ALPR camera coverage, using the plain route", e);
+			return baseline;
+		}
+		if (watched.isEmpty()) {
+			plugin.setLastAvoidanceOutcome(new AlprAvoidanceHelper.Outcome(0, 0, 0, false));
+			return baseline;
+		}
+
+		int budgetSeconds = plugin.getDetourBudgetSeconds(params.mode);
+		float baseTime = baseline.getRoutingTime();
+		int totalCameras = watched.getCameraCount();
+
+		// Round -1 is full avoidance; later rounds progressively re-admit faster road classes.
+		for (int round = -1; round < AlprRoadExclusionResolver.getRelaxationRounds(); round++) {
+			if (params.calculationProgress.isCancelled) {
+				return baseline;
+			}
+			Set<Long> excluded = round < 0
+					? watched.getExcludedRoadIds()
+					: AlprRoadExclusionResolver.relaxByRoadClass(watched, round);
+			if (excluded.isEmpty()) {
+				break;
+			}
+			RouteCalculationResult avoiding = findVectorMapsRoute(params, calcGPXRoute, excluded, true);
+			if (avoiding.isCalculated()) {
+				int detour = Math.max(0, Math.round(avoiding.getRoutingTime() - baseTime));
+				if (detour <= budgetSeconds) {
+					plugin.setLastAvoidanceOutcome(new AlprAvoidanceHelper.Outcome(
+							totalCameras, 0, detour, round >= 0));
+					return avoiding;
+				}
+				log.info("ALPR avoidance round " + round + " costs " + detour + "s, budget is "
+						+ budgetSeconds + "s");
+			}
+		}
+		// Nothing fit the budget: the fastest route wins, and the UI says how many cameras see it.
+		plugin.setLastAvoidanceOutcome(new AlprAvoidanceHelper.Outcome(0, totalCameras, 0, true));
+		return baseline;
+	}
+
 	private RoutingConfiguration initOsmAndRoutingConfig(Builder builder, RouteCalculationParams params, OsmandSettings settings,
-	                                                     GeneralRouter generalRouter) {
+	                                                     GeneralRouter generalRouter, Set<Long> excludedRoads) {
 		Map<String, String> paramsR = new LinkedHashMap<String, String>();
 		for (Map.Entry<String, RoutingParameter> e : RoutingHelperUtils.getParametersForDerivedProfile(params.mode, generalRouter).entrySet()) {
 			String key = e.getKey();
@@ -436,6 +548,9 @@ public class RouteProvider {
 		OsmandApplication app = settings.getContext();
 		DirectionPointsHelper helper = app.getAvoidSpecificRoads().getPointsHelper();
 		builder.setDirectionPoints(helper.getDirectionPoints(params.mode));
+		// Always set, so a previous camera-avoiding calculation cannot leak into this one: the
+		// builder is cached per application mode and shared between calculations.
+		builder.setTransientExcludedRoads(excludedRoads);
 
 		float mb = (1 << 20);
 		Runtime rt = Runtime.getRuntime();

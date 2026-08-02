@@ -382,6 +382,7 @@ public class RoutingOptionsHelper {
 			case ShowAlongTheRouteItem.KEY -> new ShowAlongTheRouteItem();
 			case AvoidPTTypesRoutingParameter.KEY -> new AvoidPTTypesRoutingParameter();
 			case AvoidRoadsRoutingParameter.KEY -> new AvoidRoadsRoutingParameter();
+			case AvoidCamerasRoutingParameter.KEY -> new AvoidCamerasRoutingParameter();
 			case GpxLocalRoutingParameter.KEY -> new GpxLocalRoutingParameter();
 			case TimeConditionalRoutingItem.KEY -> new TimeConditionalRoutingItem();
 			case OtherSettingsRoutingParameter.KEY -> new OtherSettingsRoutingParameter();
@@ -425,7 +426,8 @@ public class RoutingOptionsHelper {
 		list.add(1, new VoiceGuidanceRoutingParameter());
 		list.add(2, new InterruptMusicRoutingParameter());
 		list.add(3, new AvoidRoadsRoutingParameter());
-		list.add(4, new TimeConditionalRoutingItem());
+		list.add(4, new AvoidCamerasRoutingParameter());
+		list.add(5, new TimeConditionalRoutingItem());
 		list.add(new GpxLocalRoutingParameter());
 		list.add(new OtherSettingsRoutingParameter());
 		return list;

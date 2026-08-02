@@ -58,6 +58,7 @@ public interface OsmAndCustomizationConstants {
 	String OVERLAY_MAP = SHOW_ITEMS_ID_SCHEME + "overlay_map";
 	String UNDERLAY_MAP = SHOW_ITEMS_ID_SCHEME + "underlay_map";
 	String WEATHER_ID = SHOW_ITEMS_ID_SCHEME + "weather";
+	String ALPR_CAMERAS_LAYER_ID = SHOW_ITEMS_ID_SCHEME + "alpr_cameras_layer";
 
 	String TERRAIN_ITEMS_ID_SCHEME = CONFIGURE_MAP_ITEM_ID_SCHEME + "terrain.";
 	String TERRAIN_ID = TERRAIN_ITEMS_ID_SCHEME + "terrain";
@@ -182,6 +183,7 @@ public interface OsmAndCustomizationConstants {
 	String NAVIGATION_TIME_CONDITIONAL_ID = NAVIGATION_OPTIONS_ID + "time_conditional";
 	String NAVIGATION_SHOW_ALONG_THE_ROUTE_ID = NAVIGATION_OPTIONS_ID + "show_along_the_route";
 	String NAVIGATION_AVOID_ROADS_ID = NAVIGATION_OPTIONS_ID + "avoid_roads_routing";
+	String NAVIGATION_AVOID_ALPR_CAMERAS_ID = NAVIGATION_OPTIONS_ID + "avoid_alpr_cameras_routing";
 	String NAVIGATION_AVOID_PT_TYPES_ID = NAVIGATION_OPTIONS_ID + "avoid_pt_types_routing";
 	String NAVIGATION_FOLLOW_TRACK_ID = NAVIGATION_OPTIONS_ID + "follow_track_routing";
 	String NAVIGATION_OTHER_SETTINGS_ID = NAVIGATION_OPTIONS_ID + "other_settings_routing";

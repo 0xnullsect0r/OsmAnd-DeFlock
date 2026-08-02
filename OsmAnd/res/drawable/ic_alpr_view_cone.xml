@@ -1,0 +1,19 @@
+<!--
+  The field of view of an ALPR camera, drawn as a 60 degree wedge with its apex at the centre of
+  the viewport so the layer can rotate it about the camera's position. Unrotated it points north.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="96dp"
+    android:height="96dp"
+    android:viewportWidth="96"
+    android:viewportHeight="96">
+  <path
+      android:pathData="M48,48 L26,9.9 A44,44 0 0 1 70,9.9 Z"
+      android:fillColor="#ffffff"
+      android:fillAlpha="0.35"/>
+  <path
+      android:pathData="M48,48 L26,9.9 A44,44 0 0 1 70,9.9 Z"
+      android:strokeColor="#ffffff"
+      android:strokeAlpha="0.6"
+      android:strokeWidth="1.5"/>
+</vector>

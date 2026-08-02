@@ -11,6 +11,30 @@
 	Strings for OsmAnd core
 	Thx - Hardy
 -->
+    <string name="deflock_plugin_name">ALPR cameras (DeFlock)</string>
+    <string name="deflock_plugin_description">Shows automated license plate reader (ALPR) cameras from the DeFlock project on the map, with the direction each one faces, and lets navigation route around what they can see. Camera locations are crowdsourced into OpenStreetMap and downloaded from the Overpass API.</string>
+    <string name="alpr_camera">ALPR camera</string>
+    <string name="layer_alpr_cameras">ALPR cameras</string>
+    <string name="alpr_cameras_show">Show cameras on map</string>
+    <string name="alpr_cameras_show_description">Draw ALPR cameras and the area each one watches.</string>
+    <string name="alpr_view_range">Detection range</string>
+    <string name="alpr_view_range_description">How far a camera is assumed to read plates. OpenStreetMap does not record this, so it is an estimate.</string>
+    <string name="alpr_view_cone">Field of view</string>
+    <string name="alpr_view_cone_description">How wide a camera\'s view is assumed to be. Cameras with no mapped direction are treated as watching in every direction.</string>
+    <string name="alpr_avoid_cameras">Avoid ALPR camera view</string>
+    <string name="alpr_avoid_cameras_description">Route around roads that ALPR cameras can see, as long as the detour fits your time budget.</string>
+    <string name="alpr_detour_budget">Acceptable detour</string>
+    <string name="alpr_detour_budget_description">The most extra travel time you will accept to stay out of camera view. If avoiding every camera costs more than this, the route lets some cameras through, starting with the ones on the fastest roads.</string>
+    <string name="alpr_detour_budget_value">Up to %1$s extra</string>
+    <string name="alpr_avoidance_uses_standard_routing">Camera avoidance uses standard routing, so calculating a long route takes longer than usual.</string>
+    <string name="alpr_cameras_in_view">%1$d ALPR cameras in view</string>
+    <string name="alpr_no_cameras_in_view">No ALPR cameras in view</string>
+    <string name="alpr_detour_added">+%1$s detour</string>
+    <string name="alpr_cached_cameras">%1$d cameras cached</string>
+    <string name="alpr_clear_cache">Clear downloaded cameras</string>
+    <string name="alpr_clear_cache_description">Removes the offline copy. Areas you visit will be downloaded again.</string>
+    <string name="alpr_camera_direction">Faces %1$s</string>
+    <string name="alpr_camera_omnidirectional">Direction not mapped</string>
     <string name="release_5_4">
         • New spatial search — find places and search around a place\n\n
         • Refreshed search UI: sorting, category filters, cleaner look\n\n

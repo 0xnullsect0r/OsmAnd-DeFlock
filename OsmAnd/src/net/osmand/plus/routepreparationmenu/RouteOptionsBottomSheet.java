@@ -44,6 +44,12 @@ import net.osmand.plus.base.bottomsheetmenu.simpleitems.TitleItem;
 import net.osmand.plus.track.helpers.GpxUiHelper;
 import net.osmand.plus.measurementtool.MeasurementToolFragment;
 import net.osmand.plus.routepreparationmenu.data.parameters.AvoidPTTypesRoutingParameter;
+import net.osmand.plus.plugins.PluginsHelper;
+import net.osmand.plus.utils.OsmAndFormatter;
+import net.osmand.plus.plugins.deflock.AlprAvoidanceHelper;
+import net.osmand.plus.plugins.deflock.AvoidCamerasBottomSheet;
+import net.osmand.plus.plugins.deflock.DeFlockPlugin;
+import net.osmand.plus.routepreparationmenu.data.parameters.AvoidCamerasRoutingParameter;
 import net.osmand.plus.routepreparationmenu.data.parameters.AvoidRoadsRoutingParameter;
 import net.osmand.plus.routepreparationmenu.data.parameters.CalculateAltitudeItem;
 import net.osmand.plus.routepreparationmenu.data.parameters.CustomizeRouteLineRoutingParameter;
@@ -191,6 +197,8 @@ public class RouteOptionsBottomSheet extends MenuBottomSheetDialogFragment imple
 				items.add(createAvoidPTTypesItem(optionsItem));
 			} else if (optionsItem instanceof AvoidRoadsRoutingParameter) {
 				items.add(createAvoidRoadsItem(optionsItem));
+			} else if (optionsItem instanceof AvoidCamerasRoutingParameter) {
+				items.add(createAvoidCamerasItem(optionsItem));
 			} else if (optionsItem instanceof GpxLocalRoutingParameter) {
 				items.add(createGpxRoutingItem(optionsItem));
 			} else if (optionsItem instanceof TimeConditionalRoutingItem) {
@@ -467,6 +475,51 @@ public class RouteOptionsBottomSheet extends MenuBottomSheetDialogFragment imple
 					updateMenu();
 				})
 				.create();
+	}
+
+	@NonNull
+	private BaseBottomSheetItem createAvoidCamerasItem(@NonNull LocalRoutingParameter optionsItem) {
+		DeFlockPlugin plugin = PluginsHelper.getActivePlugin(DeFlockPlugin.class);
+		boolean enabled = plugin != null && plugin.AVOID_ALPR_CAMERAS.getModeValue(applicationMode);
+		return new BottomSheetItemWithDescription.Builder()
+				.setDescription(getAvoidCamerasDescription(plugin, enabled))
+				.setIcon(enabled
+						? getActiveIcon(optionsItem.getActiveIconId())
+						: getContentIcon(optionsItem.getDisabledIconId()))
+				.setTitle(getString(R.string.alpr_avoid_cameras))
+				.setLayoutId(R.layout.bottom_sheet_item_with_descr_56dp)
+				.setOnClickListener(view -> {
+					routingOptionsHelper.addNewRouteMenuParameter(applicationMode, optionsItem);
+					AvoidCamerasBottomSheet.showInstance(mapActivity, RouteOptionsBottomSheet.this,
+							applicationMode, selectedModeColor);
+					updateMenu();
+				})
+				.create();
+	}
+
+	/**
+	 * Reports what avoidance actually achieved on the route currently shown, so the detour budget
+	 * is not a setting the user has to take on faith.
+	 */
+	@NonNull
+	private String getAvoidCamerasDescription(@Nullable DeFlockPlugin plugin, boolean enabled) {
+		if (plugin == null || !enabled) {
+			return getString(R.string.shared_string_disabled);
+		}
+		AlprAvoidanceHelper.Outcome outcome = plugin.getLastAvoidanceOutcome();
+		if (outcome == null) {
+			return getString(R.string.shared_string_enabled);
+		}
+		if (outcome.getCamerasStillInView() > 0) {
+			return getString(R.string.alpr_cameras_in_view, outcome.getCamerasStillInView());
+		}
+		if (outcome.getDetourSeconds() > 0) {
+			return getString(R.string.ltr_or_rtl_combine_via_bold_point,
+					getString(R.string.alpr_no_cameras_in_view),
+					getString(R.string.alpr_detour_added,
+							OsmAndFormatter.getFormattedDuration(outcome.getDetourSeconds(), app)));
+		}
+		return getString(R.string.alpr_no_cameras_in_view);
 	}
 
 	@NonNull
@@ -752,6 +805,7 @@ public class RouteOptionsBottomSheet extends MenuBottomSheetDialogFragment imple
 		CAR(MuteSoundRoutingParameter.KEY,
 				DividerItem.KEY,
 				AvoidRoadsRoutingParameter.KEY,
+				AvoidCamerasRoutingParameter.KEY,
 				ShowAlongTheRouteItem.KEY,
 				DividerItem.KEY,
 				GpxLocalRoutingParameter.KEY,

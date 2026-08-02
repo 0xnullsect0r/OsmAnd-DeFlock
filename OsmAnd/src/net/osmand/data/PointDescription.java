@@ -66,6 +66,7 @@ public class PointDescription {
 	public static final String POINT_TYPE_MAPILLARY_IMAGE = "mapillary_image";
 	public static final String POINT_TYPE_POI_TYPE = "poi_type";
 	public static final String POINT_TYPE_CUSTOM_POI_FILTER = "custom_poi_filter";
+	public static final String POINT_TYPE_ALPR_CAMERA = "alpr_camera";
 
 	public static final PointDescription LOCATION_POINT = new PointDescription(POINT_TYPE_LOCATION, "");
 

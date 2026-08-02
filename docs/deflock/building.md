@@ -6,23 +6,35 @@ pitfalls that cost real time.
 
 ## Prerequisites
 
-### 1. OsmAnd-resources as a sibling directory
+### 1. The `resources` submodule
 
-**This is the one that catches everyone.** Routing profiles (`routing.xml`), POI types and
-rendering styles are not in this repository. Gradle reads them from `../../resources` relative
-to the module, i.e. a sibling of the repository root named exactly `resources`:
-
-```
-parent/
-├── OsmAnd-DeFlock/
-└── resources/
-```
+Routing profiles (`routing.xml`), POI types, rendering styles and the `mx_*` icon set are not
+in this repository — they live in
+[OsmAnd-resources](https://github.com/osmandapp/OsmAnd-resources), which is vendored here as
+the `resources` submodule.
 
 ```bash
-git clone --depth 1 https://github.com/osmandapp/OsmAnd-resources.git resources
+git clone --recurse-submodules <this repository>
+
+# already cloned without it?
+git submodule update --init --depth 1
 ```
 
-Without it, `:OsmAnd-java:processResources` fails and nothing builds.
+It is a large repository (a few hundred MB, mostly icons), and `.gitmodules` marks it
+`shallow = true`, so `--depth 1` is the sensible way to fetch it. The submodule is pinned to a
+specific commit, so builds are reproducible.
+
+Forget this step and the build stops immediately with:
+
+```
+OsmAnd resources not found in /…/resources or /…/../resources.
+Run: git submodule update --init --depth 1
+```
+
+**Already have a sibling checkout?** Upstream's documented layout puts OsmAnd-resources in a
+directory next to the repository rather than inside it. That still works — the root
+`build.gradle` resolves `osmandResourcesDir` by preferring `resources/` and falling back to
+`../resources`, so existing OsmAnd working copies build unchanged.
 
 ### 2. Android SDK
 

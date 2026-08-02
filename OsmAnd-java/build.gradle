@@ -12,26 +12,26 @@ tasks.withType(JavaCompile).configureEach {
 }
 
 tasks.register('collectRoutingResources', Sync) {
-	from "../../resources/routing"
+	from "${rootProject.osmandResourcesDir}/routing"
 	into "src/main/resources/net/osmand/router"
 	include "*.xml"
 }
 
 tasks.register('collectMiscResources', Copy) {
 	into "src/main/resources/net/osmand/osm"
-	from("../../resources/obf_creation") {
+	from("${rootProject.osmandResourcesDir}/obf_creation") {
 		include "rendering_types.xml"
 	}
-	from("../../resources/poi") {
+	from("${rootProject.osmandResourcesDir}/poi") {
 		include "poi_types.xml"
 	}
-	from("../../resources/poi") {
+	from("${rootProject.osmandResourcesDir}/poi") {
 		include "activities.json"
 	}
 }
 
 tasks.register('collectRenderingStylesResources', Sync) {
-	from "../../resources/rendering_styles"
+	from "${rootProject.osmandResourcesDir}/rendering_styles"
 	into "src/main/resources/net/osmand/render"
 	include "*.xml"
 }
@@ -53,13 +53,13 @@ tasks.register('collectTestPhrasesResources', Copy) {
 tasks.register('collectTestResources', Copy) {
 	delete fileTree("src/test/resources/search")
 	into "src/test/resources/"
-	from("../../resources/test-resources") {
+	from("${rootProject.osmandResourcesDir}/test-resources") {
 		include "*"
 		include "/search/*"
 		include "/routing/*"
 		include "/approximation/*"
 	}
-	from("../../resources/poi") {
+	from("${rootProject.osmandResourcesDir}/poi") {
 		include "poi_types.xml"
 	}
 }

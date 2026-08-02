@@ -219,47 +219,47 @@ tasks.register('downloadStarsDb', Download) {
 }
 
 tasks.register('collectVoiceAssets', Sync) {
-	from "../../resources/voice"
+	from "${rootProject.osmandResourcesDir}/voice"
 	into layout.buildDirectory.dir("generated/osmand/assets/voice")
 	include "**/*.js"
 }
 
 tasks.register('collectFonts', Copy) {
-	from "../../resources/rendering_styles/fonts"
-//	from "../../resources/rendering_styles/fonts/OpenSans"
+	from "${rootProject.osmandResourcesDir}/rendering_styles/fonts"
+//	from "${rootProject.osmandResourcesDir}/rendering_styles/fonts/OpenSans"
 	into layout.buildDirectory.dir("generated/osmand/assets/fonts")
 	include "*.ttf"
 }
 
 tasks.register('copyBundledAssets', Copy) {
-	from("../../resources/bundled_assets.json") {
+	from("${rootProject.osmandResourcesDir}/bundled_assets.json") {
 		include "bundled_assets.json"
 	}
 	into layout.buildDirectory.dir("generated/osmand/assets")
 }
 
 tasks.register('copyProjDb', Copy) {
-	from("../../resources/proj") {
+	from("${rootProject.osmandResourcesDir}/proj") {
 		include "proj.db"
 	}
 	into layout.buildDirectory.dir("generated/osmand/assets")
 }
 
 tasks.register('copyColorPalettes', Copy) {
-	from "../../resources/color-palette"
+	from "${rootProject.osmandResourcesDir}/color-palette"
 	into layout.buildDirectory.dir("generated/osmand/assets/color-palette")
 	include "*.*"
 }
 
 tasks.register('copyPoiCategories', Copy) {
-	from("../../resources/poi") {
+	from("${rootProject.osmandResourcesDir}/poi") {
 		include "poi_categories.json"
 	}
 	into layout.buildDirectory.dir("generated/osmand/assets")
 }
 
 tasks.register('copyRouteActivities', Copy) {
-	from("../../resources/poi") {
+	from("${rootProject.osmandResourcesDir}/poi") {
 		include "activities.json"
 	}
 	into layout.buildDirectory.dir("generated/osmand/assets")
@@ -268,16 +268,16 @@ tasks.register('copyRouteActivities', Copy) {
 // Consolidated task to avoid "Sync fighting" and constant re-indexing
 tasks.register('copyIcons', Sync) {
 	duplicatesStrategy = DuplicatesStrategy.INCLUDE
-	from("../../resources/rendering_styles/style-icons/map-shaders-vector")
-	from("../../resources/rendering_styles/style-icons/map-icons-vector")
-	from("../../resources/rendering_styles/style-icons/poi-icons-vector")
+	from("${rootProject.osmandResourcesDir}/rendering_styles/style-icons/map-shaders-vector")
+	from("${rootProject.osmandResourcesDir}/rendering_styles/style-icons/map-icons-vector")
+	from("${rootProject.osmandResourcesDir}/rendering_styles/style-icons/poi-icons-vector")
 	into layout.buildDirectory.dir("generated/osmand/res/drawable")
 	include "**/*.png", "**/*.xml"
 }
 
 tasks.register('collectTestResources', Copy) {
 	into "test/assets/"
-	from("../../resources/test-resources/ui/") {
+	from("${rootProject.osmandResourcesDir}/test-resources/ui/") {
 		include "*"
 		include "/search/*"
 		include "/routing/*"
@@ -285,7 +285,7 @@ tasks.register('collectTestResources', Copy) {
 }
 
 tasks.register('copy3DModels', Copy) {
-	from "../../resources/models"
+	from "${rootProject.osmandResourcesDir}/models"
 	into layout.buildDirectory.dir("generated/osmand/assets/models")
 	include "**/*.*"
 }

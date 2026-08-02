@@ -24,6 +24,26 @@ plugins {
 	id "de.undercouch.download" version "4.1.1"
 }
 
+// OsmAnd's shared resources - routing profiles, POI types, rendering styles and icons - live
+// in a separate repository (osmandapp/OsmAnd-resources). It is vendored here as the
+// `resources` submodule so a fresh clone needs no manual setup:
+//
+//     git clone --recurse-submodules <this repo>
+//     git submodule update --init --depth 1      # if you cloned without --recurse-submodules
+//
+// Upstream documents a sibling checkout instead, so that layout is still honoured and existing
+// OsmAnd working copies keep building unchanged.
+ext.osmandResourcesDir = {
+	String marker = "poi/poi_types.xml"
+	List<File> candidates = [file("$rootDir/resources"), file("$rootDir/../resources")]
+	File found = candidates.find { new File(it, marker).exists() }
+	if (found == null) {
+		throw new GradleException("OsmAnd resources not found in " + candidates.join(" or ") +
+				".\nRun: git submodule update --init --depth 1")
+	}
+	return found
+}()
+
 
 allprojects {
     group "net.osmand"

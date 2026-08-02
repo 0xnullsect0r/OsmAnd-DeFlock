@@ -79,14 +79,15 @@ These are real, and worth reading before relying on this.
 
 ## Building
 
-Requires the [OsmAnd-resources](https://github.com/osmandapp/OsmAnd-resources) repository
-checked out as a **sibling directory named `resources`** — routing profiles, POI types and
-rendering styles live there, not in this repo.
+Routing profiles, POI types, rendering styles and icons live in
+[OsmAnd-resources](https://github.com/osmandapp/OsmAnd-resources), which is vendored here as
+the `resources` submodule — so clone with submodules and there is nothing to set up by hand:
 
-```
-parent/
-├── OsmAnd-DeFlock/   ← this repository
-└── resources/        ← git clone https://github.com/osmandapp/OsmAnd-resources.git resources
+```bash
+git clone --recurse-submodules <this repository>
+
+# already cloned without it?
+git submodule update --init --depth 1
 ```
 
 ```bash
@@ -94,6 +95,9 @@ export ANDROID_HOME=/path/to/android-sdk     # platform 35, build-tools 35.0.0
 ./gradlew :OsmAnd-java:test                  # unit tests
 ./gradlew :OsmAnd:assembleNightlyFreeOpenglArm64Debug
 ```
+
+If you already keep OsmAnd-resources in a sibling directory — the layout upstream documents —
+that still works; the build prefers the submodule and falls back to `../resources`.
 
 Give Gradle enough heap or the build will crawl — the default is too small for this project:
 

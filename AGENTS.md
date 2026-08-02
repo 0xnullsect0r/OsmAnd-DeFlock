@@ -35,6 +35,10 @@ The project is divided into several sub-projects:
 - `:OsmAnd-api`: API for external applications to interact with OsmAnd.
 - `:OsmAnd-shared`: Kotlin Multiplatform (KMP) library shared between Android, iOS, and server (JVM).
 - `:plugins`: Contains various plugin sub-projects (e.g., `:plugins:Osmand-Nautical`, `:plugins:Osmand-Skimaps`).
+- `resources/`: git submodule of `osmandapp/OsmAnd-resources` — routing profiles (`routing.xml`),
+  POI types, rendering styles and `mx_*` icons. **Not part of this repo's source**; fetch it with
+  `git submodule update --init --depth 1`. Build files reach it via `rootProject.osmandResourcesDir`,
+  which prefers the submodule and falls back to a sibling `../resources` checkout.
 
 ## 3. Shared Code (Kotlin Multiplatform)
 The `:OsmAnd-shared` module is a **Kotlin Multiplatform (KMP)** library designed to share logic across Android, iOS, and JVM platforms.

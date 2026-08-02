@@ -46,9 +46,36 @@ export ANDROID_SDK_ROOT=$ANDROID_HOME
 sdkmanager "platforms;android-35" "build-tools;35.0.0" "platform-tools"
 ```
 
-### 3. JDK 17+
+### 3. JDK 17 or 21 — **not newer**
 
-The build targets Java 17. JDK 21 works.
+This is a range, not a minimum. The Gradle wrapper pins **Gradle 8.9**, which only runs on
+Java 8–22, and AGP 8.7.3 is tested against JDK 17 and 21. A newer JDK fails before it compiles
+a single line:
+
+```
+BUG! exception in phase 'semantic analysis' in source unit '_BuildScript_'
+Unsupported class file major version 70
+```
+
+Major version 70 is Java 26; 69 is Java 25, 68 is Java 24, 67 is Java 23. Any of these means
+Gradle's Groovy cannot parse the build scripts.
+
+You do not need to change your system default JDK — point Gradle at a supported one:
+
+```properties
+# ~/.gradle/gradle.properties
+org.gradle.java.home=/usr/lib/jvm/java-21-openjdk
+```
+
+or per invocation:
+
+```bash
+JAVA_HOME=/usr/lib/jvm/java-21-openjdk ./gradlew :OsmAnd-java:test
+```
+
+Upgrading the Gradle wrapper to chase a newer JDK is not the fix — the Gradle, AGP and Kotlin
+versions are pinned together upstream in `build.gradle` and `versions.gradle`, and moving one
+means moving all of them.
 
 ### 4. Gradle heap — do not skip this
 
@@ -85,6 +112,19 @@ The file is fine. Set the locale:
 ```bash
 export LANG=C.utf8 LC_ALL=C.utf8
 ```
+
+## Troubleshooting
+
+Every one of these was hit for real while building this fork. Search by the error text.
+
+| Symptom | Cause | Fix |
+|---|---|---|
+| `Unsupported class file major version 70` (or 69/68/67) during `semantic analysis` of `_BuildScript_` | JDK too new — Gradle 8.9 runs on Java 8–22 only | Use JDK 17 or 21, see [prerequisite 3](#3-jdk-17-or-21--not-newer) |
+| `OsmAnd resources not found in …` | submodule not checked out | `git submodule update --init --depth 1` |
+| `SDK location not found` | `ANDROID_HOME` unset, or still set to a placeholder path | Point it at a real SDK with platform 35 |
+| `Failed to create MD5 hash for file '…ludwigstra??e.obf.gz' as it does not exist` | non-UTF-8 locale; the file is fine | `export LANG=C.utf8 LC_ALL=C.utf8` |
+| Build runs for tens of minutes at high CPU without failing | Gradle heap too small, GC thrashing | Raise `org.gradle.jvmargs`, see [prerequisite 4](#4-gradle-heap--do-not-skip-this) |
+| `Plugin [id: 'de.undercouch.download'] was not found` | building with `--offline` before dependencies are cached | Run once online first |
 
 ## Commands
 

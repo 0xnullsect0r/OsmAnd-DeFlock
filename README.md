@@ -1,131 +1,144 @@
-OsmAnd (OSM Automated Navigation Directions)
-------------
-This project aims at providing comfortable map viewing and navigation (routing) application for mobile devices. Particular stress lies with complete offline features (via pre-loaded offline map data) or economic internet usage.
-To get started, continue with the basic description below, then find more detail on our Welcome Wiki Pages, the Project Homepage, or the OpenStreetMap OsmAnd Wiki Page.
-You are welcome to discuss any question regarding the project at the Google group OsmAnd. Please do not use comments on wiki pages because it is rather difficult to find them.
+# OsmAnd-DeFlock
 
+An unofficial fork of [OsmAnd](https://github.com/osmandapp/OsmAnd) that shows automated
+license plate reader (ALPR) cameras on the map and can route around what they see.
 
+> **Not affiliated with OsmAnd or the DeFlock project.** This is an independent fork. Please
+> do not report issues with it to either upstream project. Upstream's own README is kept
+> here as [README.upstream.md](README.upstream.md).
 
-|Android markets|
-|---------------|
-|<a href="https://play.google.com/store/apps/dev?id=8483587772816822023" rel="Get it on Google Play">![Google Play](https://github.com/osmandapp/OsmAnd-misc/blob/master/logo/stores/googleplay.png)</a>|
-|<a href="https://appgallery.huawei.com/#/app/C101486545" rel="Explore it on AppGallery">![Huawei AppGallery](https://github.com/osmandapp/OsmAnd-misc/blob/master/logo/stores/appgallery.png)</a>|
-|<a href="https://www.amazon.com/s?i=mobile-apps&rh=p_4%3AOsmAnd&search-type=ss" rel="Get it on Amazon">![Amazon](https://github.com/osmandapp/OsmAnd-misc/blob/master/logo/stores/amazon.png)</a>|
-|<a href="https://f-droid.org/packages/net.osmand.plus/" rel="Get it on F-Droid">![F-droid](https://github.com/osmandapp/OsmAnd-misc/blob/master/logo/stores/fdroid.png)</a>|
+Camera locations come from OpenStreetMap, where they are crowdsourced by the
+[DeFlock](https://deflock.org) project — over 336,000 nodes worldwide as of early 2026,
+tagged `man_made=surveillance` + `surveillance:type=ALPR`, nearly all carrying a `direction`.
 
-|App Store - Apple|
-|---------------|
-|<a href="https://apps.apple.com/app/apple-store/id934850257" rel="Get it on AppStore">![App Store Apple](https://github.com/osmandapp/OsmAnd-misc/blob/master/logo/stores/appstore.png)</a>|
+---
 
-<p>
-<a href="https://hosted.weblate.org/engage/osmand/">
-<img src="https://hosted.weblate.org/widgets/osmand/-/svg-badge.svg" alt="Translation status" />
-</a>
-</p>
+## What it adds
 
-Functionality
--------------
-**OsmAnd (OSM Automated Navigation Directions)** is a map and navigation application with access to the free, worldwide, and high-quality OpenStreetMap (OSM) database.
-All map data can be stored on your device's memory card for offline use.
-Via your device's GPS, OsmAnd offers routing, with optical and voice guidance, for car, bike, and pedestrian usage.
-All main functionalities work both online and offline (no internet needed).
+**Cameras on the map, with their facing.** Each camera is drawn with a wedge covering the
+area it is assumed to watch. The wedge is sized in real metres, so what you see is exactly
+what the router treats as covered. A camera whose `direction` is not mapped is drawn as a
+circle rather than pointed in a direction nobody recorded.
 
+**"Avoid ALPR camera view" when planning a route**, with a slider for how much extra travel
+time you will accept. Set it to 10 minutes and the router will detour around cameras as long
+as that costs under 10 minutes; past that it gives ground — motorways first — until the
+detour fits. Afterwards the route option reports what actually happened:
 
-## Some of the main features:
+```
+Avoid ALPR camera view
+No ALPR cameras in view • +4 min detour
+```
 
-#### Navigation
- * Works online (fast) or offline (no roaming charges when you are abroad)
- * Turn-by-turn voice guidance (recorded and synthesized voices)
- * Optional lane guidance, street name display, and estimated time of arrival
- * Supports intermediate points on your itinerary
- * Automatic re-routing whenever you deviate from the route
- * Search for places by address, by type (e.g. restaurant, hotel, gas station, museum), or by geographical coordinates
+or, when nothing fit the budget:
 
-#### Map Viewing
- * Display your position and orientation on the map
- * Optionally align the map according to compass or your direction of motion
- * Save your most important places as Favorites
- * Display POIs (point of interests) around you
- * Can display specialized online tile maps
- * Can display satellite view (from Bing)
- * Can display different overlays like touring/navigation GPX tracks and additional maps with customizable transparency
- * Optionally display place names in English, local, or phonetic spelling
+```
+Avoid ALPR camera view
+7 ALPR cameras in view
+```
 
-#### Use OpenStreetMap and Wikipedia Data
- * High quality information from the world's best collaborative projects
- * Global maps from OpenStreetMap, available per country or region
- * Wikipedia POIs, great for sightseeing (not available in free version)
- * Unlimited free downloading, directly from the app (download limit is 16 map files in free version)
- * Always up-to-date maps (updated at least once a month)
- * Compact offline vector maps
- * Select between complete map data and just road network (Example: All of Japan is 700 MB, or 200 MB for the road network only)
- * Also supports online or cached tile maps
+Everything is off by default and lives in a plugin you have to enable.
 
-#### Safety Features
- * Optional automated day/night view switching
- * Optional speed limit display, with reminder if you exceed it
- * Optional speed-dependent map zooming
- * Share your location so that your friends can find you
+---
 
-#### Bicycle and Pedestrian Features
- * The maps include foot, hiking, and bike paths (great for outdoor activities)
- * Special routing and display modes for bike and pedestrian usage
- * Optional public transport stops (bus, tram, train), including line names
- * Optional trip recording to local GPX file or online service
- * Optional speed and altitude display
- * Display of contour lines and hill-shading (via additional paid plugin)
+## Using it
 
-#### Directly Contribute to OpenStreetMap
- * Report map bugs
- * Upload GPX tracks to OSM directly from the app
- * Add POIs and directly upload them to OSM (or later if offline)
- * Optional trip recording in background mode (while device is in sleep mode)
+1. **Menu → Plugins → ALPR cameras (DeFlock)** → enable.
+2. Cameras appear from zoom 13 once the area has been downloaded (needs internet the first
+   time; after that the area works offline).
+3. To route around them: plan a route → **Route options → Avoid ALPR camera view** → turn it
+   on and set the detour you will accept.
 
+Settings live under the plugin: detection range, field-of-view angle, the detour budget, and
+a button to clear the downloaded camera cache.
 
-#### Contribute to OsmAnd
-OsmAnd is open-source and actively being developed.
-Everyone can contribute to the application by reporting bugs, [improving translations](https://hosted.weblate.org/projects/osmand/), or coding new features.
-The project experiences continuous improvement by all such forms of developer and user interaction.
-The project progress also relies on financial contributions to fund the development, coding, and testing of new functionality.
-By buying OsmAnd+ and subscribing to OsmAnd Pro (see https://osmand.net/docs/user/purchases/), you help the application become even more awesome!
+See [docs/deflock/user-guide.md](docs/deflock/user-guide.md) for what each setting means.
 
-The technical documentation on how to build OsmAnd can be found at https://www.osmand.net/docs/technical/build-osmand/
+---
 
-#### Map Coverage and Quality - How Good is OSM Data?
+## Known limitations
 
-According to research, OSM map data rivals and often surpasses commercially available maps both in terms of data completeness and data actuality. This is indicated by different metrics like the amount of road distance mapped, or the number of objects like points of interest or buildings mapped. The fact that the maps are globally crowd-sourced ensures continuous improvements and updates, the incorporation of local on-the-ground expertise, and reflects things like neighborhood development, ongoing construction, or even the results of recent natural disasters.
+These are real, and worth reading before relying on this.
 
-Comparing the different metrics, it is safe to say that OSM maps cover all continents and countries globally for all your travel needs, and you will find their quality and completeness nothing less than stunning in the vast majority of countries. Latest research mentions only few countries in continental Asia and central Africa where e.g the incorporation of a noticeable portion or roadways is still ongoing to catch up with the high levels already reached anywhere else.
+- **Avoidance blocks whole OSM ways**, not just the watched stretch — the same granularity as
+  OsmAnd's existing "Avoid road" feature, because it uses the same mechanism. The relaxation
+  ladder keeps this from producing absurd detours, but a camera can cause more road to be
+  avoided than it actually watches.
+- **Camera avoidance turns off "fast" (hierarchical) routing** for that calculation, because
+  hierarchical routing cannot honour road-id exclusion. Long routes take noticeably longer to
+  calculate while avoidance is on.
+- **The field of view is a guess.** OpenStreetMap does not record detection range or lens
+  angle for these cameras. The defaults (60 m, 60°) are estimates you can change; they are not
+  measurements of any real device.
+- **Coverage is only as good as OpenStreetMap.** An unmapped camera is an invisible camera.
+  Avoiding a camera's mapped view is not a guarantee you were not photographed.
+- **Not verified on a device.** The feature compiles and its logic is unit tested, but it has
+  not been run on real hardware. See [Verification status](#verification-status).
 
+---
 
-##### List of countries supported
-Coverage is world wide, e.g.: Afghanistan, Albania, Algeria, Andorra, Angola, Anguilla,
-Antigua and Barbuda, Argentina, Armenia, Aruba, Australia, Austria, Azerbaijan,
-Bahamas, Bahrain, Bangladesh, Barbados, Belarus, Belgium, Belize, Benin, Bermuda,
-Bhutan, Bolivia, Bonaire, Bosnia and Herzegovina, Botswana, Brazil,
-British Virgin Islands, Brunei, Bulgaria, Burkina Faso, Burundi, Cambodia, Cameroon,
-Canada, Cape Verde, Central African Republic, Chad, Chile, China, Colombia, Comoros,
-Congo, Costa Rica, Croatia, Cuba, Curaçao, Cyprus, Czechia, Denmark, Djibouti, Dominica,
-Dominican Republic, Ecuador, Egypt, El Salvador, Equatorial Guinea, Eritrea, Estonia,
-Ethiopia, Fiji, Finland, France, French Guiana, French Polynesia, Gabon, Gambia,
-Georgia, Germany, Ghana, Gibraltar, Greece, Greenland, Grenada, Guadeloupe, Guam,
-Guatemala, Guernsey, Guinea, Guinea-Bissau, Guyana, Haiti, Vatican, Honduras, Hong Kong,
-Hungary, Iceland, India, Indonesia, Iran, Iraq, Ireland, Isle of Man, Israel, Italy,
-Ivory Coast, Jamaica, Japan, Jersey, Jordan, Kazakhstan, Kenya, Kiribati,
-North Korea and South Korea, Kuwait, Kyrgyzstan, Laos, Latvia, Lebanon, Lesotho,
-Liberia, Libya, Liechtenstein, Lithuania, Luxembourg, Macao, Macedonia, Madagascar,
-Malawi, Malaysia, Maldives, Mali, Malta, Martinique, Mauritania, Mauritius, Mayotte,
-Mexico, Micronesia, Moldova, Monaco, Mongolia, Montenegro, Montserrat, Morocco,
-Mozambique, Myanmar, Namibia, Nauru, Nepal, Netherlands, Netherlands Antilles,
-New Caledonia, New Zealand, Nicaragua, Niger, Nigeria, Norway, Oman, Pakistan, Palau,
-Palestinian Territory, Panama, Papua New Guinea, Paraguay, Peru, Philippines, Poland,
-Portugal, Puerto Rico, Qatar, Romania, Russia, Rwanda, Saint Barthelemy, Saint Helena,
-Saint Kitts and Nevis, Saint Lucia, Saint Martin, Saint Pierre and Miquelon,
-Saint Vincent and the Grenadines, Samoa, San Marino, Saudi Arabia, Senegal, Serbia,
-Seychelles, Sierra Leone, Singapore, Slovakia, Slovenia, Somalia, South Africa,
-South Georgia, South Sudan, Spain, Sri Lanka, Sudan, Suriname, Swaziland, Sweden,
-Switzerland, Syria, Taiwan, Tajikistan, Tanzania, Thailand, Timor-Leste, Togo,
-Tokelau, Tonga, Trinidad and Tobago, Tunisia, Turkey, Turkmenistan, Tuvalu, Uganda,
-Ukraine, United Arab Emirates, United Kingdom (UK), United States of America (USA),
-Uruguay, Uzbekistan, Vanuatu, Venezuela, Vietnam, Wallis and Futuna, Western Sahara,
-Yemen, Zambia, Zimbabwe.
+## Building
+
+Requires the [OsmAnd-resources](https://github.com/osmandapp/OsmAnd-resources) repository
+checked out as a **sibling directory named `resources`** — routing profiles, POI types and
+rendering styles live there, not in this repo.
+
+```
+parent/
+├── OsmAnd-DeFlock/   ← this repository
+└── resources/        ← git clone https://github.com/osmandapp/OsmAnd-resources.git resources
+```
+
+```bash
+export ANDROID_HOME=/path/to/android-sdk     # platform 35, build-tools 35.0.0
+./gradlew :OsmAnd-java:test                  # unit tests
+./gradlew :OsmAnd:assembleNightlyFreeOpenglArm64Debug
+```
+
+Give Gradle enough heap or the build will crawl — the default is too small for this project:
+
+```properties
+# ~/.gradle/gradle.properties
+org.gradle.jvmargs=-Xmx6g -XX:MaxMetaspaceSize=1g -Dfile.encoding=UTF-8
+```
+
+Full details, including the UTF-8 locale requirement, are in
+[docs/deflock/building.md](docs/deflock/building.md).
+
+---
+
+## Verification status
+
+| Check | Result |
+|---|---|
+| `:OsmAnd:assembleNightlyFreeOpenglArm64Debug` | passes — 219 MB debug APK |
+| `:OsmAnd-java:test` | 577 tests, 0 failures (31 new) |
+| Overpass JSON parsing | **not automatically tested** — needs an Android runtime; the tag-to-camera conversion beneath it is tested on the JVM |
+| On-device behaviour | **not tested** — no hardware in the development environment |
+
+---
+
+## Documentation
+
+| Document | Contents |
+|---|---|
+| [user-guide.md](docs/deflock/user-guide.md) | Enabling the plugin, what every setting does |
+| [architecture.md](docs/deflock/architecture.md) | Components, data flow, every file the feature touches |
+| [routing.md](docs/deflock/routing.md) | How avoidance works and why it is built this way |
+| [building.md](docs/deflock/building.md) | Prerequisites, build and test commands, pitfalls |
+
+---
+
+## Fork history
+
+Forked from `osmandapp/OsmAnd` at commit
+[`5ab2862`](https://github.com/osmandapp/OsmAnd/commit/5ab286250f204c3755369083742376052cfc24e1)
+(2026-08-02), imported as a single snapshot commit.
+
+## Licence and credits
+
+GPLv3, inherited from OsmAnd — see [LICENSE](LICENSE). OsmAnd is developed by
+[OsmAnd BV and contributors](AUTHORS.md); ALPR camera data is crowdsourced into OpenStreetMap
+by the [DeFlock](https://github.com/FoggedLens/deflock) community and licensed
+[ODbL](https://www.openstreetmap.org/copyright). Camera data is fetched from the public
+[Overpass API](https://overpass-api.de) — please be considerate of a free, donated service.

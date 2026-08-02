@@ -2,6 +2,20 @@
 
 This document provides essential information for AI agents working on the OsmAnd Android project.
 
+## 0. This is a fork
+
+This repository is **OsmAnd-DeFlock**, a fork of `osmandapp/OsmAnd` that adds ALPR
+("Flock") surveillance camera display and route avoidance. Before touching anything under
+`plugins/deflock` or `router/deflock`, or the routing code they hook into, read:
+
+- `docs/deflock/architecture.md` — components, data flow, every file the feature touches
+- `docs/deflock/routing.md` — **read this before changing avoidance**; it documents two
+  non-obvious constraints (native routing is the default, so Java cost hooks do not run;
+  hierarchical routing cannot honour road-id exclusion) that rule out the obvious designs
+- `docs/deflock/building.md` — build prerequisites and pitfalls
+
+Upstream's original README is `README.upstream.md`.
+
 ## 1. Project Overview
 OsmAnd (OSM Automated Navigation Directions) is a powerful, open-source map and navigation application based on OpenStreetMap (OSM) data. It supports offline maps, routing, and a wide range of features for travel and outdoor activities.
 

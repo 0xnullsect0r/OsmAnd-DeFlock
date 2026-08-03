@@ -90,13 +90,12 @@ git clone --recurse-submodules <this repository>
 git submodule update --init --depth 1
 ```
 
-You also need **JDK 17 or 21** — not newer. The wrapper pins Gradle 8.9, which cannot run on
-Java 23+ and fails with `Unsupported class file major version`. And an Android SDK with
-platform 35 + build-tools 35.0.0.
+The Gradle daemon runs on a JetBrains JDK 21 that Gradle provisions itself
+(`gradle/gradle-daemon-jvm.properties`), so your system JDK does not matter. You do need an
+Android SDK with platform 35 + build-tools 35.0.0.
 
 ```bash
 export ANDROID_HOME=$HOME/Android/Sdk        # SDK root, not a subdirectory of it
-export JAVA_HOME=/usr/lib/jvm/java-21-openjdk
 
 ./gradlew :OsmAnd-java:test                  # unit tests
 ./gradlew :OsmAnd:assembleNightlyFreeOpenglArm64Debug

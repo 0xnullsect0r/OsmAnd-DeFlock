@@ -52,36 +52,28 @@ sdkmanager "platforms;android-35" "build-tools;35.0.0" "platform-tools"
 sdkmanager --licenses                        # see SDK licences under Troubleshooting
 ```
 
-### 3. JDK 17 or 21 — **not newer**
+### 3. JDK — handled for you
 
-This is a range, not a minimum. The Gradle wrapper pins **Gradle 8.9**, which only runs on
-Java 8–22, and AGP 8.7.3 is tested against JDK 17 and 21. A newer JDK fails before it compiles
-a single line:
+`gradle/gradle-daemon-jvm.properties` pins the Gradle daemon to a **JetBrains JDK 21**, and the
+foojay resolver in `settings.gradle` downloads it automatically. Your system default JDK no
+longer matters: a host running Java 26 builds fine, because Gradle does not use it for the
+daemon. The first build needs network access to fetch the toolchain.
+
+If you are on an older checkout without that toolchain config, a too-new JDK fails before
+compiling anything:
 
 ```
 BUG! exception in phase 'semantic analysis' in source unit '_BuildScript_'
 Unsupported class file major version 70
 ```
 
-Major version 70 is Java 26; 69 is Java 25, 68 is Java 24, 67 is Java 23. Any of these means
-Gradle's Groovy cannot parse the build scripts.
-
-You do not need to change your system default JDK — point Gradle at a supported one:
+Major version 70 is Java 26; 69 is Java 25, 68 is Java 24, 67 is Java 23. Fix by updating, or
+by pointing Gradle at a JDK 17/21 without touching your system default:
 
 ```properties
 # ~/.gradle/gradle.properties
 org.gradle.java.home=/usr/lib/jvm/java-21-openjdk
 ```
-
-or per invocation:
-
-```bash
-JAVA_HOME=/usr/lib/jvm/java-21-openjdk ./gradlew :OsmAnd-java:test
-```
-
-Upgrading the Gradle wrapper to chase a newer JDK is not the fix — the Gradle, AGP and Kotlin
-versions are pinned together upstream in `build.gradle` and `versions.gradle`, and moving one
-means moving all of them.
 
 ### 4. Gradle heap — do not skip this
 
@@ -127,28 +119,19 @@ JDK 21 (the JBR) and a user-owned SDK whose licences are accepted through the UI
 1. **Open the repository root** (the directory with `settings.gradle`). Studio writes
    `sdk.dir` into `local.properties`, so `ANDROID_HOME` becomes unnecessary. Both
    `local.properties` and `.idea/` are gitignored.
-2. **Gradle JDK → the bundled JBR.** Settings → Build, Execution, Deployment → Build Tools →
-   Gradle → *Gradle JDK* → `jbr-21`. This sidesteps the JDK-too-new problem entirely. For
-   command-line builds, point at the same runtime:
-   ```properties
-   # ~/.gradle/gradle.properties
-   org.gradle.java.home=/opt/android-studio/jbr
-   ```
+2. **Gradle JDK.** The repository pins a JetBrains JDK 21 daemon toolchain
+   (`gradle/gradle-daemon-jvm.properties`), so this normally needs no attention. If Studio asks,
+   pick `jbr-21` under Settings → Build, Execution, Deployment → Build Tools → Gradle →
+   *Gradle JDK*.
 3. **SDK Manager** → install *Android 15 (API 35)*, and under *SDK Tools* with "Show Package
    Details" enabled, *build-tools 35.0.0*. Prefer a user-owned SDK such as `~/Android/Sdk`
    over a system-wide one, so nothing needs `sudo`.
-4. **Decline the AGP upgrade prompt.** Studio will offer to upgrade the Android Gradle Plugin
-   and the Gradle wrapper. Don't: AGP 8.7.3, Gradle 8.9 and Kotlin 2.1.x are pinned together
-   in `build.gradle` and `versions.gradle`, and upgrading one drags in the rest.
-
-   Accepting it fails the build on a `copyIcons` implicit dependency (see
-   [Troubleshooting](#troubleshooting)). This fork carries a fix for that particular failure, so
-   a newer AGP is not immediately fatal — but **only the pinned combination is verified end to
-   end** here. If Studio has already upgraded you and you want to go back:
-   ```bash
-   git checkout -- gradle/wrapper/gradle-wrapper.properties build.gradle
-   ```
-   then set *Settings → Build Tools → Gradle → Use Gradle from: `gradle-wrapper.properties`*.
+4. **Treat further AGP upgrades as deliberate changes.** This fork already runs the current
+   AGP 8.13.2 / Gradle 8.13, so Studio should not nag. If it offers a newer one, remember that
+   AGP, Gradle and Kotlin move together, and that the last upgrade needed two build-script
+   fixes: dropping `versionCode`/`versionName` from the `OsmAnd-api` library module, and wiring
+   the navigation-resource tasks to `copyIcons` (see [AGP upgrades](#agp-upgrades)). Verify with
+   a full `assemble` before committing one.
 5. **Choose a build variant.** There are dozens. Use `nightlyFreeOpenglArm64Debug` for the
    `OsmAnd` module — or an `...X86...` variant if you are running an x86_64 emulator, since an
    arm64 build will not install on one.
@@ -162,7 +145,7 @@ Every one of these was hit for real while building this fork. Search by the erro
 
 | Symptom | Cause | Fix |
 |---|---|---|
-| `Unsupported class file major version 70` (or 69/68/67) during `semantic analysis` of `_BuildScript_` | JDK too new — Gradle 8.9 runs on Java 8–22 only | Use JDK 17 or 21, see [prerequisite 3](#3-jdk-17-or-21--not-newer) |
+| `Unsupported class file major version 70` (or 69/68/67) during `semantic analysis` of `_BuildScript_` | JDK too new, on a checkout predating the daemon toolchain | `git pull`, or see [prerequisite 3](#3-jdk--handled-for-you) |
 | `OsmAnd resources not found in …` | submodule not checked out | `git submodule update --init --depth 1` |
 | `SDK location not found` | `ANDROID_HOME` unset, or still set to a placeholder path | Point it at a real SDK with platform 35 |
 | `Failed to install the following Android SDK packages as some licences have not been accepted` | licences not accepted — **or** `ANDROID_HOME` points inside the SDK rather than at its root | See [SDK licences](#sdk-licences) below |
@@ -178,7 +161,7 @@ Every one of these was hit for real while building this fork. Search by the erro
 `OsmAnd/build.gradle` wires `copyIcons` into a hand-maintained list of AGP tasks
 (`mergeXAssets`, `mapXSourceSetPaths`, `mergeXResources`, `generateXResources`). AGP 8.10+ adds
 `processXNavigationResources` and `compileXNavigationResources`, which read the same generated
-`res` directory but are not in that list. Gradle 8.9 treats the missing dependency as a
+`res` directory but are not in that list. Gradle 8.9 treated the missing dependency as a
 warning; Gradle 8.13 makes it a build failure:
 
 ```
@@ -186,12 +169,20 @@ Task ':OsmAnd:processAndroidFullLegacyArm64DebugNavigationResources' uses this o
 task ':OsmAnd:copyIcons' without declaring an explicit or implicit dependency.
 ```
 
-This fork wires those tasks up as well, so the error should not appear. If you see it anyway,
-you are on a build without that fix — `git pull`.
+This fork wires those tasks up too, at project scope in `OsmAnd/build.gradle`, so the error
+should not appear. If you see it anyway you are on a checkout without the fix — `git pull`.
 
-Note that the newer toolchain is otherwise **unverified** here: the fix was confirmed against
-AGP 8.13.0 + Gradle 8.13, but only the pinned AGP 8.7.3 + Gradle 8.9 has had a full
-`assemble` + test run. Reverting to the pinned versions remains the safe choice.
+Two notes for anyone reproducing this. The block must be at **project scope**; the same
+`tasks.matching { … }.configureEach { dependsOn copyIcons }` inside
+`android { applicationVariants.configureEach { … } }` has no effect. And to reproduce the
+failure at all, `copyIcons` and the navigation task must be in the **same invocation** —
+running the navigation task alone leaves `copyIcons` out of the task graph, so the validation
+never fires and the build misleadingly passes:
+
+```bash
+./gradlew :OsmAnd:copyIcons \
+          :OsmAnd:processAndroidFullLegacyArm64DebugNavigationResources --rerun-tasks
+```
 
 ### SDK licences
 

@@ -82,7 +82,8 @@ OsmAnd uses an internal plugin system to modularize features.
 ## 5. Key Technologies
 - **Target SDK:** 35 (Compile SDK: 35, Min SDK: 24).
 - **Kotlin 2.1.10** & **Java 17**.
-- **AGP 8.7.3**.
+- **AGP 8.13.2** with **Gradle 8.13**; the daemon runs on a JetBrains JDK 21 provisioned via
+  `gradle/gradle-daemon-jvm.properties` and the foojay resolver in `settings.gradle`.
 - **UI Framework:** Primarily **standard Android Views** (XML layouts).
 - **Logging:** `org.apache.commons.logging` via `PlatformUtil`.
 - **SQLDelight:** Used for some database operations.

@@ -9,8 +9,6 @@ android {
     defaultConfig {
         minSdkVersion osmand_minSdk
         targetSdkVersion osmand_targetSdk
-        versionCode 2
-        versionName "2.0"
         namespace = "net.osmand.aidlapi"
     }
     lintOptions {

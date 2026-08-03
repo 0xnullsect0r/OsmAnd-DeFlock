@@ -140,6 +140,15 @@ JDK 21 (the JBR) and a user-owned SDK whose licences are accepted through the UI
 4. **Decline the AGP upgrade prompt.** Studio will offer to upgrade the Android Gradle Plugin
    and the Gradle wrapper. Don't: AGP 8.7.3, Gradle 8.9 and Kotlin 2.1.x are pinned together
    in `build.gradle` and `versions.gradle`, and upgrading one drags in the rest.
+
+   Accepting it fails the build on a `copyIcons` implicit dependency (see
+   [Troubleshooting](#troubleshooting)). This fork carries a fix for that particular failure, so
+   a newer AGP is not immediately fatal — but **only the pinned combination is verified end to
+   end** here. If Studio has already upgraded you and you want to go back:
+   ```bash
+   git checkout -- gradle/wrapper/gradle-wrapper.properties build.gradle
+   ```
+   then set *Settings → Build Tools → Gradle → Use Gradle from: `gradle-wrapper.properties`*.
 5. **Choose a build variant.** There are dozens. Use `nightlyFreeOpenglArm64Debug` for the
    `OsmAnd` module — or an `...X86...` variant if you are running an x86_64 emulator, since an
    arm64 build will not install on one.
@@ -162,6 +171,27 @@ Every one of these was hit for real while building this fork. Search by the erro
 | Build runs for tens of minutes at high CPU without failing | Gradle heap too small, GC thrashing | Raise `org.gradle.jvmargs`, see [prerequisite 4](#4-gradle-heap--do-not-skip-this) |
 | `Plugin [id: 'de.undercouch.download'] was not found` | building with `--offline` before dependencies are cached | Run once online first |
 | A task reports `UP-TO-DATE` when you wanted it to actually run | Gradle incremental build | `--rerun-tasks`, e.g. `./gradlew :OsmAnd-java:test --rerun-tasks` |
+| `uses this output of task ':OsmAnd:copyIcons' without declaring an explicit or implicit dependency` | AGP/Gradle were upgraded past the pinned versions | See [AGP upgrades](#agp-upgrades) below |
+
+### AGP upgrades
+
+`OsmAnd/build.gradle` wires `copyIcons` into a hand-maintained list of AGP tasks
+(`mergeXAssets`, `mapXSourceSetPaths`, `mergeXResources`, `generateXResources`). AGP 8.10+ adds
+`processXNavigationResources` and `compileXNavigationResources`, which read the same generated
+`res` directory but are not in that list. Gradle 8.9 treats the missing dependency as a
+warning; Gradle 8.13 makes it a build failure:
+
+```
+Task ':OsmAnd:processAndroidFullLegacyArm64DebugNavigationResources' uses this output of
+task ':OsmAnd:copyIcons' without declaring an explicit or implicit dependency.
+```
+
+This fork wires those tasks up as well, so the error should not appear. If you see it anyway,
+you are on a build without that fix — `git pull`.
+
+Note that the newer toolchain is otherwise **unverified** here: the fix was confirmed against
+AGP 8.13.0 + Gradle 8.13, but only the pinned AGP 8.7.3 + Gradle 8.9 has had a full
+`assemble` + test run. Reverting to the pinned versions remains the safe choice.
 
 ### SDK licences
 

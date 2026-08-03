@@ -204,6 +204,15 @@ android {
 	}
 }
 
+// AGP 8.10+ adds navigation-resource tasks that read the generated res directory copyIcons
+// writes into, but unlike the merge/generate tasks above they are not wired to it. Gradle 8.13+
+// turns that into a hard failure ("uses this output of task ':OsmAnd:copyIcons' without
+// declaring an explicit or implicit dependency"). Matched by name pattern rather than looked up
+// directly, because these tasks do not exist on the pinned AGP 8.7.3.
+tasks.matching { it.name ==~ /^(process|compile).*NavigationResources$/ }.configureEach {
+	dependsOn copyIcons
+}
+
 afterEvaluate {
 	android.applicationVariants.configureEach { variant ->
 		if (variant.name.contains('Opengldebug')) {

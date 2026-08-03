@@ -119,6 +119,34 @@ The file is fine. Set the locale:
 export LANG=C.utf8 LC_ALL=C.utf8
 ```
 
+## Using Android Studio
+
+Studio is the easiest route, because it supplies both awkward prerequisites itself: a bundled
+JDK 21 (the JBR) and a user-owned SDK whose licences are accepted through the UI.
+
+1. **Open the repository root** (the directory with `settings.gradle`). Studio writes
+   `sdk.dir` into `local.properties`, so `ANDROID_HOME` becomes unnecessary. Both
+   `local.properties` and `.idea/` are gitignored.
+2. **Gradle JDK → the bundled JBR.** Settings → Build, Execution, Deployment → Build Tools →
+   Gradle → *Gradle JDK* → `jbr-21`. This sidesteps the JDK-too-new problem entirely. For
+   command-line builds, point at the same runtime:
+   ```properties
+   # ~/.gradle/gradle.properties
+   org.gradle.java.home=/opt/android-studio/jbr
+   ```
+3. **SDK Manager** → install *Android 15 (API 35)*, and under *SDK Tools* with "Show Package
+   Details" enabled, *build-tools 35.0.0*. Prefer a user-owned SDK such as `~/Android/Sdk`
+   over a system-wide one, so nothing needs `sudo`.
+4. **Decline the AGP upgrade prompt.** Studio will offer to upgrade the Android Gradle Plugin
+   and the Gradle wrapper. Don't: AGP 8.7.3, Gradle 8.9 and Kotlin 2.1.x are pinned together
+   in `build.gradle` and `versions.gradle`, and upgrading one drags in the rest.
+5. **Choose a build variant.** There are dozens. Use `nightlyFreeOpenglArm64Debug` for the
+   `OsmAnd` module — or an `...X86...` variant if you are running an x86_64 emulator, since an
+   arm64 build will not install on one.
+
+The Gradle heap setting in [prerequisite 4](#4-gradle-heap--do-not-skip-this) still applies;
+Studio reads the same `gradle.properties`.
+
 ## Troubleshooting
 
 Every one of these was hit for real while building this fork. Search by the error text.
@@ -227,7 +255,13 @@ Indianapolis (the bbox above) has dense coverage and is a good manual test area.
 
 ## Manual verification
 
-Not runnable in a headless container — this needs a device or emulator:
+**This is the untested part of the feature.** The geometry and routing plumbing have unit
+tests, but nothing here has been exercised on a real device — no rendering, no touch handling,
+no end-to-end routing against real map data. If you have a device or emulator, this pass is
+the highest-value thing you can do for this fork.
+
+Install an offline map for the test area first (Menu → Maps & Resources), or routing has
+nothing to work with.
 
 1. Enable **ALPR cameras (DeFlock)** in Plugins.
 2. Pan to a mapped city; confirm cameras appear at zoom 13 and wedges point per `direction`.

@@ -95,7 +95,7 @@ Java 23+ and fails with `Unsupported class file major version`. And an Android S
 platform 35 + build-tools 35.0.0.
 
 ```bash
-export ANDROID_HOME=$HOME/Android/Sdk        # your actual SDK path
+export ANDROID_HOME=$HOME/Android/Sdk        # SDK root, not a subdirectory of it
 export JAVA_HOME=/usr/lib/jvm/java-21-openjdk
 
 ./gradlew :OsmAnd-java:test                  # unit tests

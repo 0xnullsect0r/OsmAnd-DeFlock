@@ -40,10 +40,16 @@ directory next to the repository rather than inside it. That still works — the
 
 Platform 35 and build-tools 35.0.0 (see `versions.gradle`).
 
+`ANDROID_HOME` must be the SDK **root** — the directory *containing* `platforms/`,
+`build-tools/` and `licenses/` — not one of those subdirectories. Pointing it at, say,
+`/opt/android-sdk/build-tools/35.0.0` produces a confusing "licences have not been accepted"
+error, because Gradle then looks for the licence files in the wrong place.
+
 ```bash
-export ANDROID_HOME=/path/to/android-sdk
+export ANDROID_HOME=$HOME/Android/Sdk        # or /opt/android-sdk
 export ANDROID_SDK_ROOT=$ANDROID_HOME
 sdkmanager "platforms;android-35" "build-tools;35.0.0" "platform-tools"
+sdkmanager --licenses                        # see SDK licences under Troubleshooting
 ```
 
 ### 3. JDK 17 or 21 — **not newer**
@@ -122,9 +128,35 @@ Every one of these was hit for real while building this fork. Search by the erro
 | `Unsupported class file major version 70` (or 69/68/67) during `semantic analysis` of `_BuildScript_` | JDK too new — Gradle 8.9 runs on Java 8–22 only | Use JDK 17 or 21, see [prerequisite 3](#3-jdk-17-or-21--not-newer) |
 | `OsmAnd resources not found in …` | submodule not checked out | `git submodule update --init --depth 1` |
 | `SDK location not found` | `ANDROID_HOME` unset, or still set to a placeholder path | Point it at a real SDK with platform 35 |
+| `Failed to install the following Android SDK packages as some licences have not been accepted` | licences not accepted — **or** `ANDROID_HOME` points inside the SDK rather than at its root | See [SDK licences](#sdk-licences) below |
+| Error mentions a licence path like `…/build-tools/35.0.0/licenses` | `ANDROID_HOME` is set to a component directory | It must be the SDK **root**: `/opt/android-sdk`, not `/opt/android-sdk/build-tools/35.0.0` |
 | `Failed to create MD5 hash for file '…ludwigstra??e.obf.gz' as it does not exist` | non-UTF-8 locale; the file is fine | `export LANG=C.utf8 LC_ALL=C.utf8` |
 | Build runs for tens of minutes at high CPU without failing | Gradle heap too small, GC thrashing | Raise `org.gradle.jvmargs`, see [prerequisite 4](#4-gradle-heap--do-not-skip-this) |
 | `Plugin [id: 'de.undercouch.download'] was not found` | building with `--offline` before dependencies are cached | Run once online first |
+| A task reports `UP-TO-DATE` when you wanted it to actually run | Gradle incremental build | `--rerun-tasks`, e.g. `./gradlew :OsmAnd-java:test --rerun-tasks` |
+
+### SDK licences
+
+Gradle refuses to build until the SDK licence has been accepted. It checks for hash files in
+`$ANDROID_HOME/licenses/` — note **root**, so a wrong `ANDROID_HOME` produces this same error
+even on a fully licensed SDK.
+
+```bash
+sudo $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses
+```
+
+`sdkmanager` is not on `PATH` by default; it lives in `cmdline-tools`. If those are not
+installed, writing the file directly is equivalent — the hash is all Gradle looks at, and this
+one covers both platform 35 and build-tools 35.0.0:
+
+```bash
+mkdir -p "$ANDROID_HOME/licenses"
+printf '\n24333f8a63b6825ea9c5514f83c2829b004d1fee\n' > "$ANDROID_HOME/licenses/android-sdk-license"
+```
+
+A system-wide SDK such as `/opt/android-sdk` is usually root-owned, so both of the above need
+`sudo`, and Gradle will need `sudo` again any time it wants to add a component. A user-owned
+SDK (`~/Android/Sdk`) avoids that.
 
 ## Commands
 

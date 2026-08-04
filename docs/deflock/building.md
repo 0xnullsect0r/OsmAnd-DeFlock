@@ -279,10 +279,10 @@ Indianapolis (the bbox above) has dense coverage and is a good manual test area.
 
 ## Manual verification
 
-**This is the untested part of the feature.** The geometry and routing plumbing have unit
-tests, but nothing here has been exercised on a real device — no rendering, no touch handling,
-no end-to-end routing against real map data. If you have a device or emulator, this pass is
-the highest-value thing you can do for this fork.
+The feature has been confirmed working on a real device — cameras drawn with their direction,
+offline region downloads, routing avoidance with the detour budget, and the whole thing working
+with no connection. Unit tests do not cover rendering, touch handling or end-to-end routing
+against real map data, so run this pass after any change that touches them.
 
 Install an offline map for the test area first (Menu → Maps & Resources), or routing has
 nothing to work with.
@@ -295,6 +295,8 @@ nothing to work with.
 5. Move the detour slider from 0 to 30 minutes and confirm the chosen route and the reported
    detour change with it.
 6. Turn off networking and confirm a previously visited area still shows cameras.
+7. Download a region and confirm the count is non-zero. Zero is the signature of a broken
+   Overpass query — see [architecture.md](architecture.md) on why the output mode matters.
 
 ## Releases
 

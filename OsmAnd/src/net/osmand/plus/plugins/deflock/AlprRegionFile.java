@@ -1,13 +1,13 @@
 package net.osmand.plus.plugins.deflock;
 
+import android.util.JsonReader;
+
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 
-import net.osmand.PlatformUtil;
 import net.osmand.data.QuadRect;
 import net.osmand.router.deflock.AlprCameraPoint;
 
-import org.apache.commons.logging.Log;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
@@ -19,6 +19,7 @@ import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.InputStreamReader;
 import java.io.OutputStream;
 import java.io.PushbackInputStream;
 import java.nio.charset.StandardCharsets;
@@ -43,8 +44,6 @@ import java.util.zip.GZIPOutputStream;
  * from DeFlock or Overpass be imported directly.
  */
 public class AlprRegionFile {
-
-	private static final Log log = PlatformUtil.getLog(AlprRegionFile.class);
 
 	/** Bumped only on an incompatible change; readers reject anything higher. */
 	public static final int FORMAT_VERSION = 1;
@@ -170,6 +169,118 @@ public class AlprRegionFile {
 	// --- reading -----------------------------------------------------------
 
 	/**
+	 * Just the header of a region file: enough to know what ground it covers and how much is in
+	 * it, without materialising thousands of cameras.
+	 */
+	public static class Header {
+		private final String regionKey;
+		private final long generated;
+		private final QuadRect bounds;
+		private final int count;
+
+		Header(String regionKey, long generated, QuadRect bounds, int count) {
+			this.regionKey = regionKey;
+			this.generated = generated;
+			this.bounds = bounds;
+			this.count = count;
+		}
+
+		public String getRegionKey() {
+			return regionKey;
+		}
+
+		public long getGenerated() {
+			return generated;
+		}
+
+		@Nullable
+		public QuadRect getBounds() {
+			return bounds;
+		}
+
+		public int getCount() {
+			return count;
+		}
+	}
+
+	/**
+	 * Reads only the header, stopping before the camera array.
+	 *
+	 * <p>This exists so that indexing what is on disk stays cheap: the alternative parsed every
+	 * camera of every region just to recover a bounding box. Fields are written before
+	 * {@code cameras}, so a streaming reader can stop as soon as it reaches it.
+	 *
+	 * @return the header, or null if this is not a native region file (a GeoJSON import has none)
+	 */
+	@Nullable
+	public static Header readHeader(@NonNull File file) throws IOException {
+		try (JsonReader reader = new JsonReader(
+				new InputStreamReader(openMaybeGzipped(file), StandardCharsets.UTF_8))) {
+			String regionKey = null;
+			long generated = 0;
+			QuadRect bounds = null;
+			int count = -1;
+			boolean nativeFormat = false;
+
+			reader.beginObject();
+			while (reader.hasNext()) {
+				String name = reader.nextName();
+				if (KEY_CAMERAS.equals(name)) {
+					// Everything needed comes before this; stop rather than parse the payload.
+					nativeFormat = true;
+					break;
+				}
+				switch (name) {
+					case KEY_FORMAT:
+						nativeFormat |= reader.nextInt() > 0;
+						break;
+					case KEY_REGION:
+						regionKey = reader.nextString();
+						break;
+					case KEY_GENERATED:
+						generated = reader.nextLong();
+						break;
+					case KEY_COUNT:
+						count = reader.nextInt();
+						break;
+					case KEY_BOUNDS:
+						bounds = readBoundsStreaming(reader);
+						break;
+					default:
+						reader.skipValue();
+						break;
+				}
+			}
+			return nativeFormat ? new Header(regionKey, generated, bounds, Math.max(count, 0)) : null;
+		} catch (IOException e) {
+			throw e;
+		} catch (RuntimeException e) {
+			throw new IOException("Could not read ALPR region header", e);
+		}
+	}
+
+	@Nullable
+	private static QuadRect readBoundsStreaming(@NonNull JsonReader reader) throws IOException {
+		double l = 0, t = 0, r = 0, b = 0;
+		boolean any = false;
+		reader.beginObject();
+		while (reader.hasNext()) {
+			String key = reader.nextName();
+			double value = reader.nextDouble();
+			any = true;
+			switch (key) {
+				case "l": l = value; break;
+				case "t": t = value; break;
+				case "r": r = value; break;
+				case "b": b = value; break;
+				default: break;
+			}
+		}
+		reader.endObject();
+		return any ? new QuadRect(l, t, r, b) : null;
+	}
+
+	/**
 	 * @param fallbackRegionKey used when the file carries no region of its own, as a GeoJSON
 	 *                          import will not
 	 */
@@ -285,20 +396,24 @@ public class AlprRegionFile {
 	}
 
 	/**
-	 * Reads a file that may or may not be gzipped, so a hand-unzipped file still imports.
+	 * Opens a file that may or may not be gzipped, so a hand-unzipped file still imports.
 	 */
 	@NonNull
+	private static InputStream openMaybeGzipped(@NonNull File file) throws IOException {
+		PushbackInputStream pushback =
+				new PushbackInputStream(new BufferedInputStream(new FileInputStream(file)), 2);
+		byte[] magic = new byte[2];
+		int read = pushback.read(magic);
+		if (read > 0) {
+			pushback.unread(magic, 0, read);
+		}
+		boolean gzipped = read == 2 && (magic[0] & 0xff) == 0x1f && (magic[1] & 0xff) == 0x8b;
+		return gzipped ? new GZIPInputStream(pushback) : pushback;
+	}
+
+	@NonNull
 	private static String readAllMaybeGzipped(@NonNull File file) throws IOException {
-		try (PushbackInputStream pushback =
-				     new PushbackInputStream(new BufferedInputStream(new FileInputStream(file)), 2)) {
-			byte[] magic = new byte[2];
-			int read = pushback.read(magic);
-			if (read > 0) {
-				pushback.unread(magic, 0, read);
-			}
-			boolean gzipped = read == 2
-					&& (magic[0] & 0xff) == 0x1f && (magic[1] & 0xff) == 0x8b;
-			InputStream in = gzipped ? new GZIPInputStream(pushback) : pushback;
+		try (InputStream in = openMaybeGzipped(file)) {
 			ByteArrayOutputStream out = new ByteArrayOutputStream();
 			byte[] buffer = new byte[8192];
 			int n;

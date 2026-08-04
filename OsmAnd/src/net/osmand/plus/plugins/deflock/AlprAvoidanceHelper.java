@@ -6,7 +6,6 @@ import androidx.annotation.Nullable;
 import net.osmand.PlatformUtil;
 import net.osmand.data.LatLon;
 import net.osmand.data.QuadRect;
-import net.osmand.plus.OsmandApplication;
 import net.osmand.plus.plugins.PluginsHelper;
 import net.osmand.plus.routing.RouteCalculationParams;
 import net.osmand.router.deflock.AlprCameraPoint;
@@ -45,24 +44,51 @@ public class AlprAvoidanceHelper {
 		private final int detourSeconds;
 		private final boolean budgetExceeded;
 		private final AlprCoverageIndex.Coverage coverage;
+		private final int camerasConsidered;
 
 		public Outcome(int camerasAvoided, int camerasStillInView, int detourSeconds,
-		               boolean budgetExceeded, @NonNull AlprCoverageIndex.Coverage coverage) {
+		               boolean budgetExceeded, @NonNull AlprCoverageIndex.Coverage coverage,
+		               int camerasConsidered) {
 			this.camerasAvoided = camerasAvoided;
 			this.camerasStillInView = camerasStillInView;
 			this.detourSeconds = detourSeconds;
 			this.budgetExceeded = budgetExceeded;
 			this.coverage = coverage;
+			this.camerasConsidered = camerasConsidered;
 		}
 
 		/**
-		 * How much of the route had downloaded camera data behind it. Anything short of
-		 * {@code FULL} means "no cameras in view" is a statement about what was known, not about
-		 * what is there.
+		 * How much of the route had deliberately downloaded region data behind it.
 		 */
 		@NonNull
 		public AlprCoverageIndex.Coverage getCoverage() {
 			return coverage;
+		}
+
+		/**
+		 * How many cameras were actually available to route against, from any source.
+		 *
+		 * <p>Coverage alone is not enough to describe what happened. Someone with no downloaded
+		 * region but a populated browsing cache has {@code NONE} coverage and yet real cameras
+		 * were considered - reporting "no camera data" there would be plainly false.
+		 */
+		public int getCamerasConsidered() {
+			return camerasConsidered;
+		}
+
+		/**
+		 * True when the route was planned against nothing at all, so "no cameras in view" would
+		 * mean "nothing was known" rather than "the way is clear".
+		 */
+		public boolean isUninformed() {
+			return camerasConsidered == 0 && coverage != AlprCoverageIndex.Coverage.FULL;
+		}
+
+		/**
+		 * True when something was known but the ground was not fully covered.
+		 */
+		public boolean isPartiallyInformed() {
+			return camerasConsidered > 0 && coverage != AlprCoverageIndex.Coverage.FULL;
 		}
 
 		public int getCamerasAvoided() {
@@ -141,8 +167,7 @@ public class AlprAvoidanceHelper {
 	 * {@link #getCorridorCoverage} is how the UI gets to say so.
 	 */
 	@NonNull
-	public static List<AlprCameraPoint> getCorridorCameras(@NonNull OsmandApplication app,
-	                                                       @NonNull RouteCalculationParams params) {
+	public static List<AlprCameraPoint> getCorridorCameras(@NonNull RouteCalculationParams params) {
 		DeFlockPlugin plugin = getPlugin();
 		if (plugin == null) {
 			return new ArrayList<>();

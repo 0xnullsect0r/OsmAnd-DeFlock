@@ -47,7 +47,6 @@ import net.osmand.plus.routepreparationmenu.data.parameters.AvoidPTTypesRoutingP
 import net.osmand.plus.plugins.PluginsHelper;
 import net.osmand.plus.utils.OsmAndFormatter;
 import net.osmand.plus.plugins.deflock.AlprAvoidanceHelper;
-import net.osmand.router.deflock.AlprCoverageIndex;
 import net.osmand.plus.plugins.deflock.AvoidCamerasBottomSheet;
 import net.osmand.plus.plugins.deflock.DeFlockPlugin;
 import net.osmand.plus.routepreparationmenu.data.parameters.AvoidCamerasRoutingParameter;
@@ -511,24 +510,29 @@ public class RouteOptionsBottomSheet extends MenuBottomSheetDialogFragment imple
 		if (outcome == null) {
 			return getString(R.string.shared_string_enabled);
 		}
-		// Say so when the route ran over ground with no downloaded camera data: otherwise this
-		// reads as "clean route" when it really means "nothing was known".
-		if (outcome.getCoverage() == AlprCoverageIndex.Coverage.NONE) {
+		// Nothing was known about this ground at all, so there is no result to report: saying
+		// "no cameras in view" here would read as "clean route" when it means "nobody looked".
+		if (outcome.isUninformed()) {
 			return getString(R.string.alpr_no_offline_data);
 		}
-		if (outcome.getCoverage() == AlprCoverageIndex.Coverage.PARTIAL) {
-			return getString(R.string.alpr_partial_offline_data);
-		}
+		String result;
 		if (outcome.getCamerasStillInView() > 0) {
-			return getString(R.string.alpr_cameras_in_view, outcome.getCamerasStillInView());
-		}
-		if (outcome.getDetourSeconds() > 0) {
-			return getString(R.string.ltr_or_rtl_combine_via_bold_point,
+			result = getString(R.string.alpr_cameras_in_view, outcome.getCamerasStillInView());
+		} else if (outcome.getDetourSeconds() > 0) {
+			result = getString(R.string.ltr_or_rtl_combine_via_bold_point,
 					getString(R.string.alpr_no_cameras_in_view),
 					getString(R.string.alpr_detour_added,
 							OsmAndFormatter.getFormattedDuration(outcome.getDetourSeconds(), app)));
+		} else {
+			result = getString(R.string.alpr_no_cameras_in_view);
 		}
-		return getString(R.string.alpr_no_cameras_in_view);
+		// Cameras were found and routed against, but not every part of the route had downloaded
+		// data behind it. The result stands - it just is not the whole picture.
+		if (outcome.isPartiallyInformed()) {
+			result = getString(R.string.ltr_or_rtl_combine_via_bold_point, result,
+					getString(R.string.alpr_data_may_be_incomplete));
+		}
+		return result;
 	}
 
 	@NonNull

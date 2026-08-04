@@ -70,7 +70,10 @@ public class AlprCameraRepository {
 		this.app = app;
 		this.dbHelper = new AlprCameraDbHelper(app);
 		this.regionManager = new AlprRegionManager(app);
-		this.regionManager.reindex();
+		// Deliberately not indexed here: this constructor runs from PluginsHelper.initPlugins on
+		// the main thread during onCreate, which has a sub-second budget. The manager indexes
+		// lazily on first use instead. Region changes refresh whatever is drawing cameras.
+		this.regionManager.setChangeListener(this::notifyListeners);
 	}
 
 	@NonNull
@@ -98,6 +101,9 @@ public class AlprCameraRepository {
 
 	public void setEndpoint(@NonNull String endpoint) {
 		this.endpoint = endpoint;
+		// Region downloads go through their own client, so a configured mirror has to reach it
+		// too - otherwise the setting silently applies to map browsing only.
+		regionManager.setEndpoint(endpoint);
 	}
 
 	/**
@@ -149,34 +155,6 @@ public class AlprCameraRepository {
 			scheduleDownload(missing);
 		}
 		return new ArrayList<>(merged.values());
-	}
-
-	/**
-	 * Downloads everything needed for the given bounds and blocks until it is available. Used
-	 * before a route calculation so avoidance does not silently work off a half-loaded cache.
-	 *
-	 * @return true when all tiles covering the bounds are now available
-	 */
-	public boolean loadCamerasBlocking(@NonNull QuadRect latLonBounds) {
-		List<int[]> tiles = tilesFor(latLonBounds);
-		if (tiles.size() > MAX_TILES_PER_REQUEST) {
-			log.info("ALPR area too large to download (" + tiles.size() + " tiles), using cache only");
-			return false;
-		}
-		boolean complete = true;
-		for (int[] tile : tiles) {
-			long key = tileKey(tile[0], tile[1]);
-			if (loadedTiles.containsKey(key) && dbHelper.isTileFresh(tile[0], tile[1])) {
-				continue;
-			}
-			if (loadTileFromDb(tile[0], tile[1]) != null && dbHelper.isTileFresh(tile[0], tile[1])) {
-				continue;
-			}
-			if (!downloadTile(tile[0], tile[1])) {
-				complete = false;
-			}
-		}
-		return complete;
 	}
 
 	@Nullable

@@ -68,12 +68,16 @@ take on faith:
 
 - `No ALPR cameras in view • +4 min detour` — fully avoided, cost you 4 minutes.
 - `7 ALPR cameras in view` — nothing fit your budget; this is the fastest route.
-- `No offline camera data for this route` — nothing was downloaded for this ground, so nothing
-  could be avoided. **This is not the same as a clean route.**
-- `Camera data covers only part of this route` — part of the route was planned blind.
+- `No offline camera data for this route` — no camera data at all was available for this
+  ground, so nothing could be avoided. **This is not the same as a clean route.**
+- `… • Camera data may be incomplete` — appended to either of the first two. Cameras were
+  found and routed against, but you have not downloaded a region covering the whole route, so
+  some of it may have been planned blind.
 
-Those last two exist because the alternative is worse: without them, a route over an area you
-never downloaded looks exactly like a route that successfully avoided every camera.
+The last two exist because the alternative is worse: without them, a route over an area you
+never downloaded looks exactly like a route that successfully avoided every camera. Note that
+the qualifier *adds to* the result rather than hiding it — if avoidance worked, you still see
+the detour it cost.
 
 Setting the slider to **0** means "only avoid cameras if it is free". Setting it high means
 "detour a lot to stay unseen".

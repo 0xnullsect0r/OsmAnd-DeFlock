@@ -10,6 +10,7 @@ import net.osmand.map.WorldRegion;
 import net.osmand.plus.OsmandApplication;
 import net.osmand.router.deflock.AlprCameraPoint;
 import net.osmand.router.deflock.AlprCoverageIndex;
+import net.osmand.router.deflock.AlprQueryGrid;
 import net.osmand.router.deflock.AlprRegionKey;
 
 import org.apache.commons.logging.Log;
@@ -19,7 +20,6 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
-import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -42,16 +42,6 @@ import java.util.concurrent.Executors;
 public class AlprRegionManager {
 
 	private static final Log log = PlatformUtil.getLog(AlprRegionManager.class);
-
-	/**
-	 * Overpass will time out on a whole-country bounding box, so large regions are fetched as a
-	 * grid of smaller queries and merged. Roughly two degrees a side keeps individual queries
-	 * comfortable without making a small region take many round trips.
-	 */
-	private static final double MAX_QUERY_SPAN_DEG = 2.0;
-
-	/** Guard against a pathological bounding box turning into thousands of requests. */
-	private static final int MAX_QUERY_CELLS = 240;
 
 	/** How many regions' cameras to hold in memory at once. */
 	private static final int LOADED_REGION_LIMIT = 4;
@@ -125,6 +115,9 @@ public class AlprRegionManager {
 	private final AlprCoverageIndex coverage = new AlprCoverageIndex();
 
 	private volatile String endpoint = OverpassAlprClient.DEFAULT_ENDPOINT;
+	private volatile boolean indexed;
+	// Fired after the set of region files changes, so the map layer can drop its cached query.
+	private volatile Runnable changeListener;
 
 	public AlprRegionManager(@NonNull OsmandApplication app) {
 		this.app = app;
@@ -132,6 +125,17 @@ public class AlprRegionManager {
 
 	public void setEndpoint(@NonNull String endpoint) {
 		this.endpoint = endpoint;
+	}
+
+	public void setChangeListener(@Nullable Runnable changeListener) {
+		this.changeListener = changeListener;
+	}
+
+	private void notifyChanged() {
+		Runnable listener = changeListener;
+		if (listener != null) {
+			listener.run();
+		}
 	}
 
 	@NonNull
@@ -147,13 +151,28 @@ public class AlprRegionManager {
 	// --- indexing ----------------------------------------------------------
 
 	/**
-	 * Scans the region directory and rebuilds the coverage index. Cheap: it reads each file's
-	 * header, not its cameras.
+	 * Indexes what is on disk if that has not happened yet.
+	 *
+	 * <p>Indexing is lazy rather than eager because the plugin is constructed from
+	 * {@code PluginsHelper.initPlugins} on the main thread during {@code onCreate}, which carries
+	 * an explicit sub-second budget. Scanning the region directory there would put file I/O on
+	 * the startup path, proportional to how much data the user had downloaded.
+	 */
+	public void ensureIndexed() {
+		if (!indexed) {
+			reindex();
+		}
+	}
+
+	/**
+	 * Scans the region directory and rebuilds the coverage index. Reads each file's header only,
+	 * never its cameras.
 	 */
 	public synchronized void reindex() {
 		availableRegions.clear();
 		loaded.clear();
 		coverage.clear();
+		indexed = true;
 
 		File dir = getRegionsDir();
 		File[] files = dir.listFiles();
@@ -165,11 +184,11 @@ public class AlprRegionManager {
 			if (key == null) {
 				continue;
 			}
-			QuadRect bounds = boundsForRegion(key);
+			// The file records the bounds it was downloaded for, so indexing does not depend on
+			// OsmandRegions being loaded - which it is not, this early in the app's life.
+			QuadRect bounds = readDeclaredBounds(file);
 			if (bounds == null) {
-				// No matching region: keep the data usable by falling back to the file's own
-				// declared bounds rather than discarding it.
-				bounds = readDeclaredBounds(file);
+				bounds = boundsForRegion(key);
 			}
 			if (bounds != null) {
 				availableRegions.put(key, bounds);
@@ -180,12 +199,16 @@ public class AlprRegionManager {
 		}
 	}
 
+	/**
+	 * Reads the bounds a file declares, without parsing its cameras.
+	 */
 	@Nullable
 	private QuadRect readDeclaredBounds(@NonNull File file) {
 		try {
-			return AlprRegionFile.read(file, AlprRegionKey.fromDataFileName(file.getName())).getBounds();
+			AlprRegionFile.Header header = AlprRegionFile.readHeader(file);
+			return header != null ? header.getBounds() : null;
 		} catch (IOException | RuntimeException e) {
-			log.warn("Could not read ALPR region file " + file.getName(), e);
+			log.warn("Could not read ALPR region header " + file.getName(), e);
 			return null;
 		}
 	}
@@ -202,6 +225,7 @@ public class AlprRegionManager {
 	 */
 	@NonNull
 	public synchronized List<RegionState> getRegionStates() {
+		ensureIndexed();
 		Set<String> keys = new LinkedHashSet<>();
 		for (String fileName : app.getResourceManager().getIndexFileNames().keySet()) {
 			String key = AlprRegionKey.fromMapFileName(fileName);
@@ -219,11 +243,13 @@ public class AlprRegionManager {
 			long generated = 0;
 			if (file.exists()) {
 				try {
-					AlprRegionFile data = AlprRegionFile.read(file, key);
-					count = data.size();
-					generated = data.getGenerated();
+					AlprRegionFile.Header header = AlprRegionFile.readHeader(file);
+					if (header != null) {
+						count = header.getCount();
+						generated = header.getGenerated();
+					}
 				} catch (IOException | RuntimeException e) {
-					log.warn("Could not read ALPR region file for " + key, e);
+					log.warn("Could not read ALPR region header for " + key, e);
 				}
 			}
 			states.add(new RegionState(key, app.getRegions().getRegionDataByDownloadName(key),
@@ -240,6 +266,7 @@ public class AlprRegionManager {
 	 */
 	@NonNull
 	public List<AlprCameraPoint> getCameras(@NonNull QuadRect latLonBounds) {
+		ensureIndexed();
 		double south = Math.min(latLonBounds.top, latLonBounds.bottom);
 		double north = Math.max(latLonBounds.top, latLonBounds.bottom);
 		double west = Math.min(latLonBounds.left, latLonBounds.right);
@@ -290,13 +317,17 @@ public class AlprRegionManager {
 
 	@NonNull
 	public AlprCoverageIndex.Coverage getCoverage(@NonNull QuadRect latLonBounds) {
+		ensureIndexed();
 		synchronized (this) {
 			return coverage.coverageOf(latLonBounds);
 		}
 	}
 
-	public synchronized boolean hasAnyRegionData() {
-		return !availableRegions.isEmpty();
+	public boolean hasAnyRegionData() {
+		ensureIndexed();
+		synchronized (this) {
+			return !availableRegions.isEmpty();
+		}
 	}
 
 	private static boolean intersects(QuadRect r, double west, double north, double east, double south) {
@@ -328,7 +359,7 @@ public class AlprRegionManager {
 		if (bounds == null) {
 			throw new IOException("No region bounds known for " + regionKey);
 		}
-		List<QuadRect> cells = splitForQuery(bounds);
+		List<QuadRect> cells = AlprQueryGrid.split(bounds);
 		OverpassAlprClient client = new OverpassAlprClient(endpoint);
 		Map<Long, AlprCameraPoint> merged = new LinkedHashMap<>();
 		for (int i = 0; i < cells.size(); i++) {
@@ -344,38 +375,8 @@ public class AlprRegionManager {
 				bounds, new ArrayList<>(merged.values()));
 		file.write(getRegionFile(regionKey));
 		reindex();
+		notifyChanged();
 		return merged.size();
-	}
-
-	/**
-	 * Splits a region's bounding box into query-sized cells. A single Overpass query over a
-	 * country times out, and a failure part-way through must not leave a half-written file — so
-	 * cells are merged in memory and only written once all of them succeed.
-	 */
-	@NonNull
-	static List<QuadRect> splitForQuery(@NonNull QuadRect bounds) {
-		double west = Math.min(bounds.left, bounds.right);
-		double east = Math.max(bounds.left, bounds.right);
-		double south = Math.min(bounds.top, bounds.bottom);
-		double north = Math.max(bounds.top, bounds.bottom);
-
-		int cols = (int) Math.max(1, Math.ceil((east - west) / MAX_QUERY_SPAN_DEG));
-		int rows = (int) Math.max(1, Math.ceil((north - south) / MAX_QUERY_SPAN_DEG));
-		while ((long) cols * rows > MAX_QUERY_CELLS) {
-			cols = Math.max(1, cols / 2);
-			rows = Math.max(1, rows / 2);
-		}
-		List<QuadRect> cells = new ArrayList<>(cols * rows);
-		for (int c = 0; c < cols; c++) {
-			double l = west + (east - west) * c / cols;
-			double r = west + (east - west) * (c + 1) / cols;
-			for (int rIdx = 0; rIdx < rows; rIdx++) {
-				double b = south + (north - south) * rIdx / rows;
-				double t = south + (north - south) * (rIdx + 1) / rows;
-				cells.add(new QuadRect(l, t, r, b));
-			}
-		}
-		return cells;
 	}
 
 	// --- import / export / delete ------------------------------------------
@@ -388,12 +389,7 @@ public class AlprRegionManager {
 	                             @NonNull RegionProgressListener listener) {
 		executor.submit(() -> {
 			try {
-				AlprRegionFile data = AlprRegionFile.read(source, suggestedKey);
-				String key = data.getRegionKey() != null ? data.getRegionKey() : suggestedKey;
-				QuadRect bounds = data.getBounds() != null ? data.getBounds() : boundsForRegion(key);
-				new AlprRegionFile(key, data.getGenerated(), data.getSource(), bounds,
-						data.getCameras()).write(getRegionFile(key));
-				reindex();
+				importRegionFileBlocking(source, suggestedKey);
 				app.runInUIThread(() -> listener.onFinished(true, null));
 			} catch (IOException | RuntimeException e) {
 				log.warn("Could not import ALPR region file", e);
@@ -402,11 +398,33 @@ public class AlprRegionManager {
 		});
 	}
 
+	/**
+	 * Validates a candidate region file and stores it under the region key it declares.
+	 *
+	 * <p>Reading it fully first is the point: a truncated or malformed file that was simply moved
+	 * into place would be indexed as coverage, and routes over that ground would then claim to be
+	 * better informed than they are. Callers must already be off the main thread.
+	 *
+	 * @return how many cameras were imported
+	 */
+	public int importRegionFileBlocking(@NonNull File source, @NonNull String suggestedKey)
+			throws IOException {
+		AlprRegionFile data = AlprRegionFile.read(source, suggestedKey);
+		String key = data.getRegionKey() != null ? data.getRegionKey() : suggestedKey;
+		QuadRect bounds = data.getBounds() != null ? data.getBounds() : boundsForRegion(key);
+		new AlprRegionFile(key, data.getGenerated(), data.getSource(), bounds, data.getCameras())
+				.write(getRegionFile(key));
+		reindex();
+		notifyChanged();
+		return data.size();
+	}
+
 	public synchronized boolean deleteRegion(@NonNull String regionKey) {
 		File file = getRegionFile(regionKey);
 		boolean deleted = !file.exists() || file.delete();
 		if (deleted) {
 			reindex();
+			notifyChanged();
 		}
 		return deleted;
 	}

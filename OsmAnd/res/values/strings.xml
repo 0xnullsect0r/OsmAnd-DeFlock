@@ -22,9 +22,9 @@
     <string name="alpr_download_failed">Could not download camera data: %1$s</string>
     <string name="alpr_no_regions">No maps downloaded yet. Download an offline map first, then camera data for it.</string>
     <string name="alpr_no_offline_data">No offline camera data for this route</string>
-    <string name="alpr_partial_offline_data">Camera data covers only part of this route</string>
+    <string name="alpr_data_may_be_incomplete">Camera data may be incomplete</string>
     <string name="alpr_import_failed">Could not import camera data: %1$s</string>
-    <string name="alpr_imported_cameras">Imported camera data</string>
+    <string name="alpr_imported_cameras">Imported %1$d cameras</string>
     <string name="deflock_plugin_name">ALPR cameras (DeFlock)</string>
     <string name="deflock_plugin_description">Shows automated license plate reader (ALPR) cameras from the DeFlock project on the map, with the direction each one faces, and lets navigation route around what they can see. Camera locations are crowdsourced into OpenStreetMap and downloaded from the Overpass API.</string>
     <string name="alpr_camera">ALPR camera</string>

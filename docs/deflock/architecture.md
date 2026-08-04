@@ -37,13 +37,18 @@ closed. Four independent blockers:
 |---|---|---|
 | Acquired | deliberately, per map region | incidentally, as you pan |
 | Expiry | never | 30 days |
-| Used for | offline use and routing | online browsing only |
+| Used for | offline use and routing | filling gaps regions do not cover |
 | Keyed by | OsmAnd region download name | zoom-10 tile |
 
-Region files are authoritative. Where one covers the ground, nothing is fetched and nothing
-expires — that is what makes the feature usable with no network at all. The tile cache remains
-for people who never download a region, and is never consulted where a region file already
-answers.
+Region files are authoritative. Where one covers the ground, nothing is fetched, nothing
+expires, and the tile cache is not consulted at all — that is what makes the feature usable
+with no network at all.
+
+Where coverage is not `FULL`, whatever the tile cache happens to hold is merged in, for map
+drawing and for routing alike. Cached cameras are real cameras; refusing to route against them
+because they arrived incidentally would make the feature worse, not more honest. What honesty
+requires is saying so, which is why an `Outcome` carries both the coverage and the number of
+cameras it actually had — see below.
 
 ### Linking data to the downloaded map
 
@@ -66,8 +71,22 @@ trailing `_<digits>` anyway, so a file copied by hand from the download server s
 
 `AlprCoverageIndex` answers FULL / PARTIAL / NONE for an area. This exists because the quiet
 failure is the dangerous one: a route across ground with no camera data produces exactly the
-same "no cameras in view" as a route that genuinely avoids every camera. The route option row
-reports coverage so the two are distinguishable.
+same "no cameras in view" as a route that genuinely avoids every camera.
+
+Coverage alone would over-correct, though. Someone with no downloaded region but a populated
+browsing cache has `NONE` coverage and yet real cameras were routed against — telling them "no
+offline camera data" would be as false as the silence it replaced. So `AlprAvoidanceHelper.Outcome`
+carries the coverage *and* the number of cameras the calculation actually had, and the route
+option row combines them:
+
+| Situation | What the row says |
+|---|---|
+| Coverage `FULL` | the plain result: cameras in view, or none, with the detour |
+| Not `FULL`, cameras were found | the same result, plus "Camera data may be incomplete" |
+| Not `FULL`, no cameras at all | "No offline camera data for this route" — nothing was known |
+
+The warning qualifies the result rather than replacing it. Hiding a successful detour behind a
+data-coverage notice was its own kind of dishonesty.
 
 ## Module split
 
@@ -90,7 +109,7 @@ OverpassAlprClient   AlprRegionManager.downloadRegion   DeflockImportTask
      ▼                        └──────────┬──────────────────┘
 AlprCameraDbHelper                       ▼
   tile cache, 30-day TTL          deflock/<region>.deflock   (AlprRegionFile)
-  browsing only                          │  authoritative, never expires
+  fills uncovered gaps                   │  authoritative, never expires
      │                                   ▼
      │                            AlprRegionManager  ──► AlprCoverageIndex
      │                                   │                (FULL/PARTIAL/NONE)

@@ -234,6 +234,8 @@ public class ImportHelper {
 			handleGpxImport(intentUri, fileName, OPEN_GPX_CONTEXT_MENU, saveFile, useImportDir, false);
 		} else if (fileName.endsWith(BINARY_MAP_INDEX_EXT) || fileName.endsWith(BINARY_MAP_INDEX_EXT + ZIP_EXT)) {
 			handleObfImport(intentUri, fileName);
+		} else if (fileName.endsWith(DEFLOCK_FILE_EXT)) {
+			executeImportTask(new DeflockImportTask(activity, intentUri, fileName));
 		} else if (fileName.endsWith(SQLITE_EXT)) {
 			handleSqliteTileImport(intentUri, fileName);
 		} else if (fileName.endsWith(OSMAND_SETTINGS_FILE_EXT) || fileName.endsWith(OSMAND_SETTINGS_FILE_EXT + ZIP_EXT)) {

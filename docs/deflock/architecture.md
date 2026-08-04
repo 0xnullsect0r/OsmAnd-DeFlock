@@ -1,6 +1,6 @@
 # Architecture
 
-## Why the data is not offline
+## Why the data does not come from the maps
 
 OsmAnd is offline-first, so the obvious design would read cameras from downloaded `.obf` maps.
 That is not possible, and the reason drives the whole data layer.
@@ -16,8 +16,58 @@ In `OsmAnd-resources/poi/poi_types.xml`, surveillance is declared:
 `top="true"`, so it is not indexed either. `.obf` files are built on OsmAnd's servers from
 that configuration, so a fork cannot change what they contain.
 
-Hence: **fetch from Overpass, cache on disk.** The cache is what makes the feature work
-offline after the first visit to an area.
+Hence: **fetch from Overpass, store on disk.**
+
+### Why not write into the `.obf` either
+
+Injecting cameras into a downloaded map, or shipping a companion `.obf`, was considered and
+closed. Four independent blockers:
+
+1. **No OBF writer exists in this repository.** `BinaryMapIndexWriter` lives in OsmAnd-tools, a
+   separate desktop repo that is not vendored here, so nothing on the device can produce one.
+2. **Surveillance POIs are excluded by design**, per the `no_indx` declaration above — a
+   companion `.obf` would need a forked OsmAnd-resources before it was even searchable.
+3. **Downloaded maps are replaced wholesale on update**, so anything injected into them
+   disappears silently the next time the region updates.
+4. Rewriting a multi-hundred-MB `.obf` on a phone is not practical.
+
+### Two tiers of storage
+
+| | Region files | Tile cache |
+|---|---|---|
+| Acquired | deliberately, per map region | incidentally, as you pan |
+| Expiry | never | 30 days |
+| Used for | offline use and routing | online browsing only |
+| Keyed by | OsmAnd region download name | zoom-10 tile |
+
+Region files are authoritative. Where one covers the ground, nothing is fetched and nothing
+expires — that is what makes the feature usable with no network at all. The tile cache remains
+for people who never download a region, and is never consulted where a region file already
+answers.
+
+### Linking data to the downloaded map
+
+A region file is named after OsmAnd's own identity for the region, so
+`Us_indiana_northamerica.obf` pairs with `deflock/us_indiana_northamerica.deflock`. The chain
+is the one `DownloadResources.isOsmandMapRegion` already uses:
+
+```java
+String key = WorldRegion.getRegionDownloadName(mapFileName);   // "us_indiana_northamerica"
+WorldRegion region = app.getRegions().getRegionDataByDownloadName(key);
+QuadRect bbox = region.getBoundingBox();                       // what to ask Overpass for
+```
+
+Note that downloaded maps do **not** carry the OBF version suffix: the server publishes
+`Us_indiana_northamerica_2.obf.zip`, but `DownloadActivityType.getBasename` cuts at the last
+underscore, so the file on disk is `Us_indiana_northamerica.obf`. `AlprRegionKey` strips a
+trailing `_<digits>` anyway, so a file copied by hand from the download server still resolves.
+
+### Coverage, and why it is reported
+
+`AlprCoverageIndex` answers FULL / PARTIAL / NONE for an area. This exists because the quiet
+failure is the dangerous one: a route across ground with no camera data produces exactly the
+same "no cameras in view" as a route that genuinely avoids every camera. The route option row
+reports coverage so the two are distinguishable.
 
 ## Module split
 
@@ -31,33 +81,35 @@ The feature is deliberately split across two modules:
 ## Data flow
 
 ```
-Overpass API
-     │  node["surveillance:type"="ALPR"](bbox); out tags;
-     ▼
-OverpassAlprClient ──── parses JSON ────► AlprCameraPoint
-     │                                          │
-     ▼                                          │
-AlprCameraDbHelper                               │
-  SQLite, zoom-10 tiles, 30-day TTL              │
-     ▲                                          │
-     │                                          ▼
-AlprCameraRepository ◄──── in-memory tile buckets
-     │
-     ├──────────────► AlprCameraLayer          (draw cameras + view cones)
-     │
-     └──────────────► AlprAvoidanceHelper      (collect cameras in the route corridor)
-                             │
-                             ▼
+Overpass API                                    a shared/imported .deflock file
+     │  node["surveillance:type"="ALPR"](bbox)              │
+     ├───────────────┐                                      │
+     ▼               ▼                                      ▼
+OverpassAlprClient   AlprRegionManager.downloadRegion   DeflockImportTask
+     │                        │                             │
+     ▼                        └──────────┬──────────────────┘
+AlprCameraDbHelper                       ▼
+  tile cache, 30-day TTL          deflock/<region>.deflock   (AlprRegionFile)
+  browsing only                          │  authoritative, never expires
+     │                                   ▼
+     │                            AlprRegionManager  ──► AlprCoverageIndex
+     │                                   │                (FULL/PARTIAL/NONE)
+     └───────────┬───────────────────────┘
+                 ▼
+        AlprCameraRepository       regions first, then tile cache, then fetch
+                 │
+     ┌───────────┴───────────┐
+     ▼                       ▼
+AlprCameraLayer        AlprAvoidanceHelper   (offline only - never blocks on network)
+(cameras + cones)              │
+                               ▼
                       AlprRoadExclusionResolver
-                             │  CameraCoverage.coversSegment per road
-                             ▼
-                      Set<Long> road ids
-                             │
-                             ▼
+                               │  CameraCoverage.coversSegment per road
+                               ▼
               RoutingConfiguration.Builder.setTransientExcludedRoads
-                             │
-                             ▼
-                      GeneralRouter.acceptLine  → route
+                               │
+                               ▼
+                      GeneralRouter.acceptLine  → route + coverage
 ```
 
 ## Components
@@ -98,6 +150,25 @@ eviction trivial. It downloads at most 16 tiles per request, serves stale data w
 is in flight, and backs off exponentially (30 s to 15 min) when Overpass returns 429/503/504,
 without caching an empty tile just because the server was loaded.
 
+### `AlprRegionFile` / `AlprRegionManager` (Android)
+
+The offline half. `AlprRegionFile` is gzipped JSON with a header (format version, region key,
+bounds, count) and cameras sorted by OSM id, so a region's file is byte-identical between runs
+and "has anything changed?" is answerable. Writes go to a temp file and are renamed, because a
+half-written file after a killed download would otherwise look like valid coverage. Reading
+also accepts a plain GeoJSON `FeatureCollection`, which costs almost nothing given
+`AlprCameraPoint.fromTags` already exists and lets a DeFlock or Overpass export be imported
+directly.
+
+`AlprRegionManager` enumerates downloaded maps through `ResourceManager.getIndexFileNames`,
+maps each to a region, and owns download / import / delete. Two details worth knowing:
+
+- **Downloads are split into a grid** of roughly 2° cells and merged, because a single Overpass
+  query over a country times out. Cells are merged in memory and written only once all succeed,
+  so a failure part-way through leaves no file rather than a partial one.
+- **Cameras load lazily** with a small LRU (4 regions). The index of region → bounds is loaded
+  up front and is enough to answer coverage without reading any cameras.
+
 ### `AlprCameraLayer` (Android)
 
 Registered by the plugin at z-order **3.4** — just below OsmAnd's POI layer. Visible from zoom
@@ -134,6 +205,12 @@ Configure-map toggle, and the last avoidance outcome for the UI to report.
 | `OsmAnd-java/src/main/java/net/osmand/router/deflock/AlprCameraPoint.java` | camera model, direction parsing |
 | `OsmAnd-java/src/main/java/net/osmand/router/deflock/CameraCoverage.java` | view sector geometry |
 | `OsmAnd-java/src/main/java/net/osmand/router/deflock/AlprRoadExclusionResolver.java` | cameras → road ids, relaxation ladder |
+| `OsmAnd-java/…/router/deflock/AlprRegionKey.java` | map file name ↔ region key ↔ data file name |
+| `OsmAnd-java/…/router/deflock/AlprCoverageIndex.java` | FULL/PARTIAL/NONE coverage for an area |
+| `OsmAnd/…/plugins/deflock/AlprRegionFile.java` | region file read/write, GeoJSON import |
+| `OsmAnd/…/plugins/deflock/AlprRegionManager.java` | region enumeration, download, import, delete |
+| `OsmAnd/…/plugins/deflock/DeFlockRegionsFragment.java` | offline camera data screen |
+| `OsmAnd/…/importfiles/tasks/DeflockImportTask.java` | `.deflock` share-sheet import |
 | `OsmAnd/src/net/osmand/plus/plugins/deflock/OverpassAlprClient.java` | Overpass query and JSON parsing |
 | `OsmAnd/src/net/osmand/plus/plugins/deflock/AlprCameraDbHelper.java` | SQLite tile cache |
 | `OsmAnd/src/net/osmand/plus/plugins/deflock/AlprCameraRepository.java` | cache orchestration, downloads, backoff |
@@ -160,6 +237,8 @@ Tests live in `OsmAnd-java/src/test/java/net/osmand/router/deflock/`.
 | `OsmAnd/src/net/osmand/data/PointDescription.java` | `POINT_TYPE_ALPR_CAMERA` |
 | `OsmAnd-api/…/OsmAndCustomizationConstants.java` | layer and route-option ids |
 | `OsmAnd/res/values/strings.xml`, `colors.xml` | strings, accent colour |
+| `OsmAnd-java/…/IndexConstants.java` | `DEFLOCK_INDEX_DIR`, `DEFLOCK_FILE_EXT` |
+| `OsmAnd/…/importfiles/ImportHelper.java` | dispatch `.deflock` to the import task |
 
 The footprint on upstream files is kept small on purpose, so rebasing onto a newer OsmAnd
 stays manageable.

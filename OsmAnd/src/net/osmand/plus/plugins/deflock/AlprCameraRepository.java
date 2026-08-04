@@ -7,6 +7,7 @@ import net.osmand.PlatformUtil;
 import net.osmand.data.QuadRect;
 import net.osmand.plus.OsmandApplication;
 import net.osmand.router.deflock.AlprCameraPoint;
+import net.osmand.router.deflock.AlprCoverageIndex;
 import net.osmand.util.MapUtils;
 
 import org.apache.commons.logging.Log;
@@ -14,6 +15,7 @@ import org.apache.commons.logging.Log;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -51,6 +53,8 @@ public class AlprCameraRepository {
 
 	private final OsmandApplication app;
 	private final AlprCameraDbHelper dbHelper;
+	// Deliberately downloaded, per map region, never expires. Authoritative when present.
+	private final AlprRegionManager regionManager;
 	private final ExecutorService executor = Executors.newSingleThreadExecutor();
 
 	// tileKey -> cameras. Populated from the database, then from downloads.
@@ -65,6 +69,21 @@ public class AlprCameraRepository {
 	public AlprCameraRepository(@NonNull OsmandApplication app) {
 		this.app = app;
 		this.dbHelper = new AlprCameraDbHelper(app);
+		this.regionManager = new AlprRegionManager(app);
+		this.regionManager.reindex();
+	}
+
+	@NonNull
+	public AlprRegionManager getRegionManager() {
+		return regionManager;
+	}
+
+	/**
+	 * @return how much of the area is covered by deliberately downloaded region data
+	 */
+	@NonNull
+	public AlprCoverageIndex.Coverage getOfflineCoverage(@NonNull QuadRect latLonBounds) {
+		return regionManager.getCoverage(latLonBounds);
 	}
 
 	public void addListener(@NonNull CamerasLoadedListener listener) {
@@ -82,16 +101,32 @@ public class AlprCameraRepository {
 	}
 
 	/**
-	 * Returns the cameras already available for the given bounds, and schedules a background
-	 * download of any tiles that are missing or stale.
+	 * Returns the cameras available for the given bounds.
+	 *
+	 * <p>Resolution order is region files, then the browsing tile cache, then - only when
+	 * explicitly allowed - a background fetch. Region files are authoritative: where they cover
+	 * the ground, nothing is fetched and nothing expires, which is what makes the feature usable
+	 * with no network at all.
 	 *
 	 * @param allowDownload false to stay strictly offline (used while routing, where a network
 	 *                      stall would block the calculation)
 	 */
 	@NonNull
 	public List<AlprCameraPoint> getCameras(@NonNull QuadRect latLonBounds, boolean allowDownload) {
+		AlprCoverageIndex.Coverage coverage = regionManager.getCoverage(latLonBounds);
+		List<AlprCameraPoint> fromRegions = regionManager.getCameras(latLonBounds);
+		if (coverage == AlprCoverageIndex.Coverage.FULL) {
+			// Downloaded region data covers all of this ground; the tile cache can add nothing
+			// and there is nothing to fetch.
+			return fromRegions;
+		}
+
+		Map<Long, AlprCameraPoint> merged = new LinkedHashMap<>();
+		for (AlprCameraPoint camera : fromRegions) {
+			merged.put(camera.getOsmId(), camera);
+		}
+
 		List<int[]> tiles = tilesFor(latLonBounds);
-		List<AlprCameraPoint> result = new ArrayList<>();
 		List<int[]> missing = new ArrayList<>();
 		for (int[] tile : tiles) {
 			long key = tileKey(tile[0], tile[1]);
@@ -102,7 +137,7 @@ public class AlprCameraRepository {
 			if (cached != null) {
 				for (AlprCameraPoint camera : cached) {
 					if (contains(latLonBounds, camera)) {
-						result.add(camera);
+						merged.put(camera.getOsmId(), camera);
 					}
 				}
 			}
@@ -113,7 +148,7 @@ public class AlprCameraRepository {
 		if (allowDownload && !missing.isEmpty() && missing.size() <= MAX_TILES_PER_REQUEST) {
 			scheduleDownload(missing);
 		}
-		return result;
+		return new ArrayList<>(merged.values());
 	}
 
 	/**

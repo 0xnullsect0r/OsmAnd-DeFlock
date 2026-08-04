@@ -20,12 +20,34 @@ A camera whose `direction` is missing from OpenStreetMap is drawn as a **translu
 instead of a wedge. That is deliberate: the facing was never recorded, so the app does not
 invent one, and routing treats such a camera as watching in every direction.
 
-Downloading needs internet the first time you visit an area. After that the area is cached on
-disk and works offline.
+There are two ways cameras get onto your device, and the difference matters:
+
+- **Offline camera data** you download per map region (see below). Deliberate, never expires,
+  and is what routing uses.
+- **Browsing cache**, filled in as you pan the map while online. Convenient, expires after 30
+  days, and only covers wherever you happened to look.
+
+## Offline camera data
+
+**Menu → Plugins → ALPR cameras (DeFlock) → Settings → Offline camera data.**
+
+The screen lists every offline map you have downloaded. Tap one to download cameras for it;
+tap again later to update or delete. The data is stored beside your maps, named after the same
+region, so `Us_indiana_northamerica.obf` gets `deflock/us_indiana_northamerica.deflock`.
+
+Once a region is downloaded it never expires and is never re-fetched on its own — refreshing is
+your decision, and the screen shows when each region was last downloaded. Large regions are
+fetched in several requests, so the progress counter moves in steps.
+
+**No internet at all?** A region file can be shared from a device that did download it, and
+imported through the normal Android share sheet. Plain GeoJSON exports from DeFlock or Overpass
+can be imported the same way.
 
 ## Routing around cameras
 
-Plan a route, then **Route options → Avoid ALPR camera view**.
+Plan a route, then **Route options → Avoid ALPR camera view**. Routing only ever uses data
+already on your device — it will not reach for the network mid-calculation, so download the
+regions you care about first.
 
 The sheet has a switch and a **detour slider (0–60 minutes)**. The slider is the budget: the
 most extra travel time you are willing to spend to stay out of camera view.
@@ -46,6 +68,12 @@ take on faith:
 
 - `No ALPR cameras in view • +4 min detour` — fully avoided, cost you 4 minutes.
 - `7 ALPR cameras in view` — nothing fit your budget; this is the fastest route.
+- `No offline camera data for this route` — nothing was downloaded for this ground, so nothing
+  could be avoided. **This is not the same as a clean route.**
+- `Camera data covers only part of this route` — part of the route was planned blind.
+
+Those last two exist because the alternative is worse: without them, a route over an area you
+never downloaded looks exactly like a route that successfully avoided every camera.
 
 Setting the slider to **0** means "only avoid cameras if it is free". Setting it high means
 "detour a lot to stay unseen".
@@ -62,7 +90,8 @@ endpoint is per navigation profile, so your car and bicycle profiles can differ.
 | Field of view | 60° | How wide its view is assumed to be. `Direction not mapped` treats every camera as omnidirectional. |
 | Avoid ALPR camera view | off | Whether routing avoids camera view for this profile. |
 | Acceptable detour | 10 min | The detour budget described above. |
-| Clear downloaded cameras | — | Deletes the offline cache; shows how many cameras are stored. |
+| Offline camera data | — | Per-region downloads, described above. |
+| Clear downloaded cameras | — | Clears the *browsing cache* only. Downloaded regions are unaffected; delete those from the offline data screen. |
 
 ### About range and field of view
 
@@ -86,6 +115,8 @@ avoids, so you can see the consequence of the setting directly.
 ## Data source and etiquette
 
 Camera data comes from the public [Overpass API](https://overpass-api.de), which is a free,
-donated service. The app downloads in ~40 km tiles, caches each for 30 days, downloads at most
-16 tiles per request, and backs off when the server reports it is busy. Please do not
-reconfigure it to poll aggressively.
+donated service. Region downloads are split into several bounded requests rather than one
+country-sized query; map browsing fetches ~40 km tiles and caches each for 30 days, at most 16
+per request, backing off when the server reports it is busy. Please do not reconfigure it to
+poll aggressively — and prefer downloading a region once over letting the browsing cache fill
+in piecemeal.

@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Rows are added at runtime by DeFlockRegionsFragment, one per downloaded map region, so this
+  screen only carries the header.
+-->
+<PreferenceScreen xmlns:android="http://schemas.android.com/apk/res/android"
+    android:title="@string/alpr_offline_data">
+
+    <PreferenceCategory
+        android:key="alpr_regions_category"
+        android:layout="@layout/preference_category_with_descr"
+        android:title="@string/alpr_offline_data" />
+
+</PreferenceScreen>

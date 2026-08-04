@@ -20,6 +20,12 @@ area it is assumed to watch. The wedge is sized in real metres, so what you see 
 what the router treats as covered. A camera whose `direction` is not mapped is drawn as a
 circle rather than pointed in a direction nobody recorded.
 
+**Offline camera data per map region.** Download cameras for a region you already have a map
+for, and they are stored beside it — `Us_indiana_northamerica.obf` gets
+`deflock/us_indiana_northamerica.deflock`. Downloaded data never expires and routing never
+reaches for the network, so the whole feature works in airplane mode. A region file can also be
+shared to a device that never goes online.
+
 **"Avoid ALPR camera view" when planning a route**, with a slider for how much extra travel
 time you will accept. Set it to 10 minutes and the router will detour around cameras as long
 as that costs under 10 minutes; past that it gives ground — motorways first — until the
@@ -37,6 +43,14 @@ Avoid ALPR camera view
 7 ALPR cameras in view
 ```
 
+or, when the route crossed ground you have no camera data for — which is emphatically **not**
+the same as a clean route:
+
+```
+Avoid ALPR camera view
+No offline camera data for this route
+```
+
 Everything is off by default and lives in a plugin you have to enable.
 
 ---
@@ -44,13 +58,13 @@ Everything is off by default and lives in a plugin you have to enable.
 ## Using it
 
 1. **Menu → Plugins → ALPR cameras (DeFlock)** → enable.
-2. Cameras appear from zoom 13 once the area has been downloaded (needs internet the first
-   time; after that the area works offline).
+2. **Settings → Offline camera data** → download cameras for a region you have a map for.
+   Cameras appear from zoom 13 and keep working with no connection.
 3. To route around them: plan a route → **Route options → Avoid ALPR camera view** → turn it
    on and set the detour you will accept.
 
-Settings live under the plugin: detection range, field-of-view angle, the detour budget, and
-a button to clear the downloaded camera cache.
+Settings live under the plugin: offline data per region, detection range, field-of-view angle,
+the detour budget, and a button to clear the browsing cache.
 
 See [docs/deflock/user-guide.md](docs/deflock/user-guide.md) for what each setting means.
 
@@ -72,6 +86,9 @@ These are real, and worth reading before relying on this.
   measurements of any real device.
 - **Coverage is only as good as OpenStreetMap.** An unmapped camera is an invisible camera.
   Avoiding a camera's mapped view is not a guarantee you were not photographed.
+- **Routing only uses data already downloaded.** It will not fetch mid-calculation, so a region
+  you never downloaded is a region with no avoidance. The route option says so rather than
+  reporting a clean route.
 - **Not verified on a device.** The feature compiles and its logic is unit tested, but it has
   not been run on real hardware. See [Verification status](#verification-status).
 
@@ -120,9 +137,9 @@ Full details, including the UTF-8 locale requirement, are in
 
 | Check | Result |
 |---|---|
-| `:OsmAnd:assembleNightlyFreeOpenglArm64Debug` | passes — 219 MB debug APK |
-| `:OsmAnd-java:test` | 577 tests, 0 failures (31 new) |
-| Overpass JSON parsing | **not automatically tested** — needs an Android runtime; the tag-to-camera conversion beneath it is tested on the JVM |
+| `:OsmAnd:assembleNightlyFreeOpenglArm64Debug` | passes — debug APK builds |
+| `:OsmAnd-java:test` | 593 tests, 0 failures (47 from this fork) |
+| Region file and Overpass JSON parsing | **not automatically tested** — both use `org.json`, which needs an Android runtime; the region-key, coverage and camera-tag logic beneath them is tested on the JVM |
 | On-device behaviour | **not tested** — no hardware in the development environment |
 
 ---

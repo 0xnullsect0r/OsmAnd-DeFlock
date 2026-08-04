@@ -7,12 +7,14 @@ import androidx.preference.SwitchPreferenceCompat;
 import net.osmand.plus.R;
 import net.osmand.plus.plugins.PluginsHelper;
 import net.osmand.plus.settings.fragments.BaseSettingsFragment;
+import net.osmand.plus.settings.fragments.SettingsScreenType;
 import net.osmand.plus.settings.preferences.ListPreferenceEx;
 import net.osmand.plus.utils.AndroidUtils;
 
 public class DeFlockSettingsFragment extends BaseSettingsFragment {
 
 	private static final String CLEAR_CACHE_PREF_ID = "alpr_clear_cache";
+	private static final String OFFLINE_DATA_PREF_ID = "alpr_offline_data";
 
 	private final DeFlockPlugin plugin = PluginsHelper.requirePlugin(DeFlockPlugin.class);
 
@@ -23,6 +25,7 @@ public class DeFlockSettingsFragment extends BaseSettingsFragment {
 		setupViewCone();
 		setupAvoidCameras();
 		setupDetourBudget();
+		setupOfflineData();
 		setupClearCache();
 	}
 
@@ -93,6 +96,26 @@ public class DeFlockSettingsFragment extends BaseSettingsFragment {
 		return minutes + " " + getString(R.string.int_min);
 	}
 
+	private void setupOfflineData() {
+		Preference preference = findPreference(OFFLINE_DATA_PREF_ID);
+		if (preference == null) {
+			return;
+		}
+		preference.setIcon(getActiveIcon(R.drawable.ic_action_map_download));
+		AlprRegionManager manager = plugin.getCameraRepository().getRegionManager();
+		int downloaded = 0;
+		int total = 0;
+		for (AlprRegionManager.RegionState state : manager.getRegionStates()) {
+			total++;
+			if (state.hasData()) {
+				downloaded++;
+			}
+		}
+		preference.setSummary(total == 0
+				? getString(R.string.alpr_offline_data_description)
+				: getString(R.string.alpr_offline_data_summary, downloaded, total));
+	}
+
 	private void setupClearCache() {
 		Preference preference = findPreference(CLEAR_CACHE_PREF_ID);
 		if (preference != null) {
@@ -104,6 +127,10 @@ public class DeFlockSettingsFragment extends BaseSettingsFragment {
 
 	@Override
 	public boolean onPreferenceClick(Preference preference) {
+		if (OFFLINE_DATA_PREF_ID.equals(preference.getKey())) {
+			BaseSettingsFragment.showInstance(requireActivity(), SettingsScreenType.DEFLOCK_REGIONS);
+			return true;
+		}
 		if (CLEAR_CACHE_PREF_ID.equals(preference.getKey())) {
 			plugin.getCameraRepository().clearCache();
 			setupClearCache();

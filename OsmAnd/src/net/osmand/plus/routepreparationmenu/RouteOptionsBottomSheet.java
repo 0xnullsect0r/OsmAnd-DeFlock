@@ -47,6 +47,7 @@ import net.osmand.plus.routepreparationmenu.data.parameters.AvoidPTTypesRoutingP
 import net.osmand.plus.plugins.PluginsHelper;
 import net.osmand.plus.utils.OsmAndFormatter;
 import net.osmand.plus.plugins.deflock.AlprAvoidanceHelper;
+import net.osmand.router.deflock.AlprCoverageIndex;
 import net.osmand.plus.plugins.deflock.AvoidCamerasBottomSheet;
 import net.osmand.plus.plugins.deflock.DeFlockPlugin;
 import net.osmand.plus.routepreparationmenu.data.parameters.AvoidCamerasRoutingParameter;
@@ -509,6 +510,14 @@ public class RouteOptionsBottomSheet extends MenuBottomSheetDialogFragment imple
 		AlprAvoidanceHelper.Outcome outcome = plugin.getLastAvoidanceOutcome();
 		if (outcome == null) {
 			return getString(R.string.shared_string_enabled);
+		}
+		// Say so when the route ran over ground with no downloaded camera data: otherwise this
+		// reads as "clean route" when it really means "nothing was known".
+		if (outcome.getCoverage() == AlprCoverageIndex.Coverage.NONE) {
+			return getString(R.string.alpr_no_offline_data);
+		}
+		if (outcome.getCoverage() == AlprCoverageIndex.Coverage.PARTIAL) {
+			return getString(R.string.alpr_partial_offline_data);
 		}
 		if (outcome.getCamerasStillInView() > 0) {
 			return getString(R.string.alpr_cameras_in_view, outcome.getCamerasStillInView());

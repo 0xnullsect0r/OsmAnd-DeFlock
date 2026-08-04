@@ -5,6 +5,7 @@ import net.osmand.plus.keyevent.fragments.MainExternalInputDevicesFragment;
 import net.osmand.plus.plugins.accessibility.AccessibilitySettingsFragment;
 import net.osmand.plus.plugins.aistracker.AisTrackerSettingsFragment;
 import net.osmand.plus.plugins.audionotes.MultimediaNotesFragment;
+import net.osmand.plus.plugins.deflock.DeFlockRegionsFragment;
 import net.osmand.plus.plugins.deflock.DeFlockSettingsFragment;
 import net.osmand.plus.plugins.development.DevelopmentSettingsFragment;
 import net.osmand.plus.plugins.externalsensors.ExternalSettingsWriteToTrackSettingsFragment;
@@ -56,6 +57,7 @@ public enum SettingsScreenType {
 	EXTERNAL_INPUT_DEVICE(MainExternalInputDevicesFragment.class.getName(), true, ApplyQueryType.SNACK_BAR, R.xml.external_input_device_settings, R.layout.profile_preference_toolbar_with_switch),
 	AIS_SETTINGS(AisTrackerSettingsFragment.class.getName(), true, ApplyQueryType.SNACK_BAR, R.xml.ais_settings, R.layout.profile_preference_toolbar),
 	DEFLOCK_SETTINGS(DeFlockSettingsFragment.class.getName(), true, ApplyQueryType.SNACK_BAR, R.xml.deflock_settings, R.layout.profile_preference_toolbar),
+	DEFLOCK_REGIONS(DeFlockRegionsFragment.class.getName(), false, null, R.xml.deflock_regions, R.layout.global_preference_toolbar),
 	POSITION_ANIMATION(PositionAnimationFragment.class.getName(), true, ApplyQueryType.NONE, R.xml.position_animation_settings, R.layout.profile_preference_toolbar_with_switch);
 
 	public final String fragmentName;

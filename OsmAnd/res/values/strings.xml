@@ -11,6 +11,20 @@
 	Strings for OsmAnd core
 	Thx - Hardy
 -->
+    <string name="alpr_offline_data">Offline camera data</string>
+    <string name="alpr_offline_data_description">Download ALPR cameras for the map regions you have, so they work with no internet connection.</string>
+    <string name="alpr_offline_data_summary">%1$d of %2$d regions downloaded</string>
+    <string name="alpr_region_no_data">No camera data</string>
+    <string name="alpr_region_downloaded">%1$d cameras · %2$s</string>
+    <string name="alpr_download_cameras">Download cameras</string>
+    <string name="alpr_update_cameras">Update</string>
+    <string name="alpr_downloading_cameras">Downloading %1$d/%2$d · %3$d cameras</string>
+    <string name="alpr_download_failed">Could not download camera data: %1$s</string>
+    <string name="alpr_no_regions">No maps downloaded yet. Download an offline map first, then camera data for it.</string>
+    <string name="alpr_no_offline_data">No offline camera data for this route</string>
+    <string name="alpr_partial_offline_data">Camera data covers only part of this route</string>
+    <string name="alpr_import_failed">Could not import camera data: %1$s</string>
+    <string name="alpr_imported_cameras">Imported camera data</string>
     <string name="deflock_plugin_name">ALPR cameras (DeFlock)</string>
     <string name="deflock_plugin_description">Shows automated license plate reader (ALPR) cameras from the DeFlock project on the map, with the direction each one faces, and lets navigation route around what they can see. Camera locations are crowdsourced into OpenStreetMap and downloaded from the Overpass API.</string>
     <string name="alpr_camera">ALPR camera</string>

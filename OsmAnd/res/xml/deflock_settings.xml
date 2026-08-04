@@ -46,6 +46,12 @@
         android:title="@string/alpr_detour_budget"
         tools:summary="@string/alpr_detour_budget_description" />
 
+    <Preference
+        android:key="alpr_offline_data"
+        android:layout="@layout/preference_with_descr"
+        android:title="@string/alpr_offline_data"
+        tools:summary="@string/alpr_offline_data_description" />
+
     <PreferenceCategory
         android:key="alpr_data_settings"
         android:layout="@layout/preference_category_with_descr"

@@ -10,6 +10,7 @@ import net.osmand.plus.OsmandApplication;
 import net.osmand.plus.plugins.PluginsHelper;
 import net.osmand.plus.routing.RouteCalculationParams;
 import net.osmand.router.deflock.AlprCameraPoint;
+import net.osmand.router.deflock.AlprCoverageIndex;
 import net.osmand.util.MapUtils;
 
 import org.apache.commons.logging.Log;
@@ -43,12 +44,25 @@ public class AlprAvoidanceHelper {
 		private final int camerasStillInView;
 		private final int detourSeconds;
 		private final boolean budgetExceeded;
+		private final AlprCoverageIndex.Coverage coverage;
 
-		public Outcome(int camerasAvoided, int camerasStillInView, int detourSeconds, boolean budgetExceeded) {
+		public Outcome(int camerasAvoided, int camerasStillInView, int detourSeconds,
+		               boolean budgetExceeded, @NonNull AlprCoverageIndex.Coverage coverage) {
 			this.camerasAvoided = camerasAvoided;
 			this.camerasStillInView = camerasStillInView;
 			this.detourSeconds = detourSeconds;
 			this.budgetExceeded = budgetExceeded;
+			this.coverage = coverage;
+		}
+
+		/**
+		 * How much of the route had downloaded camera data behind it. Anything short of
+		 * {@code FULL} means "no cameras in view" is a statement about what was known, not about
+		 * what is there.
+		 */
+		@NonNull
+		public AlprCoverageIndex.Coverage getCoverage() {
+			return coverage;
 		}
 
 		public int getCamerasAvoided() {
@@ -119,9 +133,12 @@ public class AlprAvoidanceHelper {
 	}
 
 	/**
-	 * Collects the cameras in the corridor, downloading any that are missing first. Downloading is
-	 * synchronous on purpose: silently routing off a half-loaded cache would tell the user their
-	 * route avoids cameras when it does not.
+	 * Collects the cameras in the corridor from data already on the device.
+	 *
+	 * <p>This never touches the network. Route calculation is not a good place to discover that
+	 * the phone is offline, and blocking on Overpass mid-calculation made every route depend on a
+	 * third-party server being reachable. What the device does not have, it does not avoid - and
+	 * {@link #getCorridorCoverage} is how the UI gets to say so.
 	 */
 	@NonNull
 	public static List<AlprCameraPoint> getCorridorCameras(@NonNull OsmandApplication app,
@@ -131,18 +148,26 @@ public class AlprAvoidanceHelper {
 			return new ArrayList<>();
 		}
 		QuadRect bounds = getCorridorBounds(params);
-		AlprCameraRepository repository = plugin.getCameraRepository();
-		if (app.getSettings().isInternetConnectionAvailable()) {
-			boolean complete = repository.loadCamerasBlocking(bounds);
-			if (!complete) {
-				log.info("ALPR camera data for this route is incomplete, avoiding what is cached");
-			}
-		}
-		List<AlprCameraPoint> cameras = repository.getCameras(bounds, false);
+		List<AlprCameraPoint> cameras = plugin.getCameraRepository().getCameras(bounds, false);
 		if (cameras.size() > MAX_CAMERAS) {
 			log.info("Limiting ALPR avoidance to " + MAX_CAMERAS + " of " + cameras.size() + " cameras");
 			return cameras.subList(0, MAX_CAMERAS);
 		}
 		return cameras;
+	}
+
+	/**
+	 * How much of the route corridor has deliberately downloaded camera data.
+	 *
+	 * <p>Without this the most dangerous outcome is the quiet one: a route over ground with no
+	 * camera data looks exactly like a route that genuinely avoids every camera.
+	 */
+	@NonNull
+	public static AlprCoverageIndex.Coverage getCorridorCoverage(@NonNull RouteCalculationParams params) {
+		DeFlockPlugin plugin = getPlugin();
+		if (plugin == null) {
+			return AlprCoverageIndex.Coverage.NONE;
+		}
+		return plugin.getCameraRepository().getOfflineCoverage(getCorridorBounds(params));
 	}
 }

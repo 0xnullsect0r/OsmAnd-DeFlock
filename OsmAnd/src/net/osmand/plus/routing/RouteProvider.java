@@ -42,6 +42,7 @@ import net.osmand.router.RoutingConfiguration.RoutingMemoryLimits;
 import net.osmand.plus.plugins.deflock.AlprAvoidanceHelper;
 import net.osmand.plus.plugins.deflock.DeFlockPlugin;
 import net.osmand.router.deflock.AlprCameraPoint;
+import net.osmand.router.deflock.AlprCoverageIndex;
 import net.osmand.router.deflock.AlprRoadExclusionResolver;
 import net.osmand.router.RoutingContext;
 import net.osmand.router.TurnType;
@@ -460,11 +461,15 @@ public class RouteProvider {
 			return baseline;
 		}
 
+		// Recorded before anything else: "no cameras in view" means something very different
+		// over ground that has no downloaded camera data behind it.
+		AlprCoverageIndex.Coverage coverage = AlprAvoidanceHelper.getCorridorCoverage(params);
+
 		AlprRoadExclusionResolver.Result watched;
 		try {
 			List<AlprCameraPoint> cameras = AlprAvoidanceHelper.getCorridorCameras(params.ctx, params);
 			if (cameras.isEmpty()) {
-				plugin.setLastAvoidanceOutcome(new AlprAvoidanceHelper.Outcome(0, 0, 0, false));
+				plugin.setLastAvoidanceOutcome(new AlprAvoidanceHelper.Outcome(0, 0, 0, false, coverage));
 				return baseline;
 			}
 			RoutingContext lookupCtx = baseEnv.getComplexCtx() != null ? baseEnv.getComplexCtx() : baseEnv.getCtx();
@@ -476,7 +481,7 @@ public class RouteProvider {
 			return baseline;
 		}
 		if (watched.isEmpty()) {
-			plugin.setLastAvoidanceOutcome(new AlprAvoidanceHelper.Outcome(0, 0, 0, false));
+			plugin.setLastAvoidanceOutcome(new AlprAvoidanceHelper.Outcome(0, 0, 0, false, coverage));
 			return baseline;
 		}
 
@@ -500,7 +505,7 @@ public class RouteProvider {
 				int detour = Math.max(0, Math.round(avoiding.getRoutingTime() - baseTime));
 				if (detour <= budgetSeconds) {
 					plugin.setLastAvoidanceOutcome(new AlprAvoidanceHelper.Outcome(
-							totalCameras, 0, detour, round >= 0));
+							totalCameras, 0, detour, round >= 0, coverage));
 					return avoiding;
 				}
 				log.info("ALPR avoidance round " + round + " costs " + detour + "s, budget is "
@@ -508,7 +513,7 @@ public class RouteProvider {
 			}
 		}
 		// Nothing fit the budget: the fastest route wins, and the UI says how many cameras see it.
-		plugin.setLastAvoidanceOutcome(new AlprAvoidanceHelper.Outcome(0, totalCameras, 0, true));
+		plugin.setLastAvoidanceOutcome(new AlprAvoidanceHelper.Outcome(0, totalCameras, 0, true, coverage));
 		return baseline;
 	}
 

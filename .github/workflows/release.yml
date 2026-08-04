@@ -1,0 +1,174 @@
+name: Release APK
+
+# Pushing any tag builds an installable APK and publishes it as a GitHub release.
+# A manual run builds the same APK and attaches it to the run as an artifact instead,
+# which is how you test a change to this workflow without cutting a tag.
+
+on:
+  push:
+    tags: ['**']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+
+    env:
+      # collectTestResources hashes resources/test-resources/search/ludwigstraße.obf.gz.
+      # Under a POSIX locale Gradle cannot see that name and fails the build with
+      # "Failed to create MD5 hash ... as it does not exist".
+      LANG: C.UTF-8
+      LC_ALL: C.UTF-8
+      # Every variant's javaCompile depends on buildOsmAndCore, which runs
+      # OsmAnd/old-ndk-build.sh. That script exits early when no NDK is configured - which is
+      # what happens on a developer machine, and the only path this fork has ever built. The
+      # runner image sets these, and with them set the script tries to build the legacy core
+      # from ../../core-legacy, a repository this fork does not vendor. Blank them.
+      ANDROID_NDK: ''
+      ANDROID_NDK_ROOT: ''
+      ANDROID_NDK_HOME: ''
+
+    steps:
+      - name: Check out the fork
+        uses: actions/checkout@v7
+        with:
+          # Routing profiles, POI types, rendering styles and icons come from the resources
+          # submodule; the build fails at configuration time without it.
+          submodules: recursive
+
+      - name: Set up a JDK to launch Gradle
+        uses: actions/setup-java@v5
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+
+      - name: Install the Android SDK packages this project pins
+        run: |
+          set -eu
+          SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          # No pipefail here on purpose: sdkmanager exits before `yes` is done writing, so
+          # `yes` dies of SIGPIPE and pipefail would report 141 for a licence step that worked.
+          yes | "$SDKMANAGER" --licenses > /dev/null || true
+          "$SDKMANAGER" "platforms;android-35" "build-tools;35.0.0"
+          # Build output, the resources submodule and the Gradle cache come to roughly 6 GB.
+          # If a run ever dies on disk, this is where you will see it coming.
+          df -h /
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Give Gradle enough heap
+        # The checked-in gradle.properties leaves org.gradle.jvmargs commented out, so the
+        # daemon gets Gradle's 512 MB default. This project does not fail on that - it thrashes,
+        # for tens of minutes, looking exactly like a hang.
+        run: |
+          printf '\norg.gradle.jvmargs=-Xmx5g -XX:MaxMetaspaceSize=1g -Dfile.encoding=UTF-8\n' \
+            >> gradle.properties
+
+      - name: Resolve the version
+        id: version
+        run: |
+          set -euo pipefail
+          if [ "$GITHUB_REF_TYPE" = tag ]; then
+            TAG="$GITHUB_REF_NAME"
+          else
+            TAG="dev-$(git rev-parse --short HEAD)"
+          fi
+          VERSION="${TAG#v}"
+          # Semver prerelease convention: anything with a hyphen is not a final release.
+          case "$VERSION" in
+            *-*) PRERELEASE=true ;;
+            *)   PRERELEASE=false ;;
+          esac
+          {
+            echo "tag=$TAG"
+            echo "version=$VERSION"
+            echo "prerelease=$PRERELEASE"
+          } >> "$GITHUB_OUTPUT"
+          echo "Building $TAG (version $VERSION, prerelease $PRERELEASE)"
+
+      - name: Run the unit tests
+        run: ./gradlew :OsmAnd-java:test
+
+      - name: Build the APK
+        env:
+          # OsmAnd/build.gradle already reads APK_VERSION into versionName, so the tag shows up
+          # in the app's About screen.
+          APK_VERSION: ${{ steps.version.outputs.version }}
+        run: ./gradlew :OsmAnd:assembleNightlyFreeOpenglArmonlyDebug
+
+      - name: Name the APK after the tag
+        id: package
+        run: |
+          set -euo pipefail
+          mapfile -t APKS < <(find OsmAnd/build/outputs/apk -name '*.apk' -type f)
+          if [ "${#APKS[@]}" -ne 1 ]; then
+            echo "Expected exactly one APK, found ${#APKS[@]}:" >&2
+            printf '  %s\n' "${APKS[@]}" >&2
+            exit 1
+          fi
+          NAME="OsmAnd-DeFlock-${{ steps.version.outputs.tag }}-armonly.apk"
+          mkdir -p dist
+          mv "${APKS[0]}" "dist/$NAME"
+          ( cd dist && sha256sum "$NAME" > "$NAME.sha256" )
+          echo "name=$NAME" >> "$GITHUB_OUTPUT"
+          echo "sha256=$(cut -d' ' -f1 < "dist/$NAME.sha256")" >> "$GITHUB_OUTPUT"
+          ls -lh dist
+
+      - name: Write the release notes preamble
+        if: github.ref_type == 'tag'
+        run: |
+          # Quoted delimiter: nothing in here is expanded by the shell. The ${{ }} expressions
+          # are substituted by Actions before this script runs.
+          cat > release-notes.md <<'NOTES'
+          ### Install
+
+          Download **${{ steps.package.outputs.name }}** below and open it on your phone. You
+          will have to allow installing from your browser or file manager.
+
+          - Contains `arm64-v8a` and `armeabi-v7a`, so it installs on any Android phone.
+          - Installs as **OsmAnd Nightly** (`net.osmand.dev`), so it sits alongside a
+            Play Store OsmAnd rather than replacing it.
+          - **Debug-signed** with the key committed in this repository. Android may warn about
+            it, and it cannot be installed over an APK signed with a different key - uninstall
+            the old one first if you hit that.
+
+          ```
+          SHA-256  ${{ steps.package.outputs.sha256 }}
+          ```
+
+          NOTES
+
+      - name: Publish the release
+        if: github.ref_type == 'tag'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.version.outputs.tag }}
+        run: |
+          set -euo pipefail
+          if gh release view "$TAG" > /dev/null 2>&1; then
+            # Re-run of a tag that already has a release: replace the assets, keep the notes.
+            gh release upload "$TAG" dist/* --clobber
+          else
+            ARGS=(--title "OsmAnd-DeFlock $TAG" --notes-file release-notes.md --generate-notes)
+            if [ "${{ steps.version.outputs.prerelease }}" = true ]; then
+              ARGS+=(--prerelease)
+            fi
+            gh release create "$TAG" "${ARGS[@]}" dist/*
+          fi
+
+      - name: Attach the APK to the run instead
+        if: github.ref_type != 'tag'
+        uses: actions/upload-artifact@v7
+        with:
+          name: apk-${{ steps.version.outputs.tag }}
+          path: dist/*
+          retention-days: 14

@@ -236,7 +236,10 @@ Build variants are `<flavor><renderer><abi><buildType>`, e.g.
 `gplayFull`, `huawei`. Renderers: `opengl`, `opengldebug`, `legacy`. Use
 `./gradlew :OsmAnd:tasks --all` to list them.
 
-`nightlyFree` + `opengl` + `arm64` is the practical default for testing this fork.
+ABIs: `arm64`, `armv7`, `x86`, `armonly` (arm64 + armv7), `fat` (all four).
+
+`nightlyFree` + `opengl` + `arm64` is the practical default for testing this fork. Releases use
+`armonly` instead, so one APK installs on any phone — see [Releases](#releases).
 
 ### Native core
 
@@ -292,6 +295,59 @@ nothing to work with.
 5. Move the detour slider from 0 to 30 minutes and confirm the chosen route and the reported
    detour change with it.
 6. Turn off networking and confirm a previously visited area still shows cameras.
+
+## Releases
+
+`.github/workflows/release.yml` builds an APK and publishes it as a GitHub release on **any**
+tag push:
+
+```bash
+git tag -a v0.2.0 -m "What changed"
+git push origin v0.2.0
+```
+
+The workflow runs `:OsmAnd-java:test` first, so a red test stops the release. It builds
+`assembleNightlyFreeOpenglArmonlyDebug` — `arm64-v8a` + `armeabi-v7a` in one file, which
+installs on any phone — renames it to `OsmAnd-DeFlock-<tag>-armonly.apk`, writes a `.sha256`
+beside it, and attaches both. A tag whose version contains a hyphen (`v0.2.0-beta`) is marked
+prerelease, per semver.
+
+The APK is signed with `keystores/debug.keystore`, the debug key committed to this repository.
+No secrets are involved, which is why a tag push works with no setup at all. It also means the
+build cannot upgrade over an APK signed with a different key. Real release signing would need a
+keystore, repository secrets, and a change to the `publishing` signing config in
+`OsmAnd/build.gradle`, which still points at a Jenkins path (`/var/lib/jenkins/osmand_key`).
+
+To test a change to the workflow without cutting a tag, run it from the Actions tab
+(**Run workflow**). On a manual run it builds exactly the same APK but attaches it to the run as
+an artifact instead of publishing a release.
+
+The tag's version reaches the app: the workflow sets `APK_VERSION`, which `OsmAnd/build.gradle`
+already reads into `versionName`, so About shows the release version. `versionCode` is
+deliberately left alone — deriving it from a run number would let it go backwards if the
+workflow were ever recreated, and Android refuses a lower `versionCode` as a downgrade.
+
+### Two things that only break in CI
+
+Both were found by reading, not by a failing build, because neither reproduces on a developer
+machine. If you rewrite the workflow, keep them.
+
+**The NDK.** Every variant's `javaCompile` depends on `buildOsmAndCore`, which runs
+`OsmAnd/old-ndk-build.sh`. That script exits early — silently, exit 0 — when no NDK is
+configured, which is the only path this fork has ever built. GitHub's runner image *does* set
+`ANDROID_NDK_ROOT`, and with it set the script tries to build the legacy core from
+`../../core-legacy`, which this fork does not vendor. The workflow blanks `ANDROID_NDK`,
+`ANDROID_NDK_ROOT` and `ANDROID_NDK_HOME` at job level to restore the working path. Nothing in
+the Android DSL uses `externalNativeBuild`, so AGP does not need the NDK; `-x buildOsmAndCore`
+is the fallback if blanking ever stops being enough.
+
+**Gradle heap.** `gradle.properties` leaves `org.gradle.jvmargs` commented out, so the daemon
+gets Gradle's 512 MB default. This project does not fail on that — it thrashes, for tens of
+minutes, looking exactly like a hang. The workflow appends `-Xmx5g` before building, the same
+fix as [prerequisite 4](#4-gradle-heap--do-not-skip-this).
+
+The workflow also pins `LANG`/`LC_ALL` to `C.UTF-8` for the same reason a local build needs a
+UTF-8 locale: `collectTestResources` hashes `ludwigstraße.obf.gz`.
 
 ## Rebasing onto newer OsmAnd
 

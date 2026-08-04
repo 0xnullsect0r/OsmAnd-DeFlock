@@ -94,6 +94,26 @@ These are real, and worth reading before relying on this.
 
 ---
 
+## Installing
+
+Every tag push publishes a release, so the current build is on the
+[releases page](../../releases) as a single APK — download it on your phone and open it. There
+is nothing to compile.
+
+A few things worth knowing before you do:
+
+- The APK contains both `arm64-v8a` and `armeabi-v7a`, so it installs on any Android phone.
+- It installs as **OsmAnd Nightly** (application id `net.osmand.dev`), so it sits alongside a
+  Play Store OsmAnd instead of replacing it. Your existing maps and settings are untouched.
+- It is **debug-signed**, with the key committed in this repository. Android may warn about
+  that, and it cannot install over an APK signed with a different key — uninstall the old one
+  first if you hit that. There is no release-signing key for this fork.
+
+The release is built by [`.github/workflows/release.yml`](.github/workflows/release.yml) from
+the tagged commit, and the unit tests have to pass before it is published.
+
+---
+
 ## Building
 
 Routing profiles, POI types, rendering styles and icons live in
@@ -138,7 +158,7 @@ Full details, including the UTF-8 locale requirement, are in
 | Check | Result |
 |---|---|
 | `:OsmAnd:assembleNightlyFreeOpenglArm64Debug` | passes — debug APK builds |
-| `:OsmAnd-java:test` | 593 tests, 0 failures (47 from this fork) |
+| `:OsmAnd-java:test` | 603 tests, 0 failures (57 from this fork) |
 | Region file and Overpass JSON parsing | **not automatically tested** — both use `org.json`, which needs an Android runtime; the region-key, coverage and camera-tag logic beneath them is tested on the JVM |
 | On-device behaviour | **not tested** — no hardware in the development environment |
 

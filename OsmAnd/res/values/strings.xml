@@ -19,6 +19,10 @@
     <string name="alpr_download_cameras">Download cameras</string>
     <string name="alpr_update_cameras">Update</string>
     <string name="alpr_downloading_cameras">Downloading %1$d/%2$d · %3$d cameras</string>
+    <string name="alpr_download_starting">Starting download…</string>
+    <string name="alpr_download_complete">Downloaded %1$d cameras</string>
+    <string name="alpr_no_cameras_in_region">No ALPR cameras are mapped in this region yet</string>
+    <string name="shared_string_cancel_download">Cancel download</string>
     <string name="alpr_download_failed">Could not download camera data: %1$s</string>
     <string name="alpr_no_regions">No maps downloaded yet. Download an offline map first, then camera data for it.</string>
     <string name="alpr_no_offline_data">No offline camera data for this route</string>

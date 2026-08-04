@@ -6,6 +6,7 @@ import net.osmand.PlatformUtil;
 import net.osmand.data.QuadRect;
 import net.osmand.osm.io.NetworkUtils;
 import net.osmand.router.deflock.AlprCameraPoint;
+import net.osmand.router.deflock.AlprOverpassQuery;
 import net.osmand.util.Algorithms;
 
 import org.apache.commons.logging.Log;
@@ -40,7 +41,6 @@ public class OverpassAlprClient {
 	public static final String DEFAULT_ENDPOINT = "https://overpass-api.de/api/interpreter";
 	public static final String FALLBACK_ENDPOINT = "https://overpass.kumi.systems/api/interpreter";
 
-	private static final int QUERY_TIMEOUT_S = 90;
 	private static final int CONNECT_TIMEOUT_MS = 20000;
 	private static final int READ_TIMEOUT_MS = 120000;
 	private static final int MAX_RESPONSE_BYTES = 16 * 1024 * 1024;
@@ -77,17 +77,9 @@ public class OverpassAlprClient {
 	}
 
 	static String buildQuery(@NonNull QuadRect latLonBounds) {
-		// QuadRect for lat/lon bounds holds top = max latitude, bottom = min latitude.
-		double south = Math.min(latLonBounds.top, latLonBounds.bottom);
-		double north = Math.max(latLonBounds.top, latLonBounds.bottom);
-		double west = Math.min(latLonBounds.left, latLonBounds.right);
-		double east = Math.max(latLonBounds.left, latLonBounds.right);
-		// surveillance:type=ALPR is the reliable selector: in live data every DeFlock node carries
-		// it, while manufacturer=Flock Safety is only on part of them.
-		return "[out:json][timeout:" + QUERY_TIMEOUT_S + "];"
-				+ "node[\"surveillance:type\"=\"ALPR\"]("
-				+ south + "," + west + "," + north + "," + east + ");"
-				+ "out tags;";
+		// Built in OsmAnd-java so it can be unit tested - see AlprOverpassQuery for why the output
+		// mode in particular is worth a test.
+		return AlprOverpassQuery.forBounds(latLonBounds);
 	}
 
 	private String post(@NonNull String url, @NonNull String query) throws IOException {
@@ -140,14 +132,29 @@ public class OverpassAlprClient {
 	static List<AlprCameraPoint> parse(String json) throws IOException {
 		List<AlprCameraPoint> cameras = new ArrayList<>();
 		if (Algorithms.isEmpty(json)) {
-			return cameras;
+			throw new IOException("Overpass returned an empty response");
 		}
+		JSONObject root;
 		try {
-			JSONObject root = new JSONObject(json);
-			JSONArray elements = root.optJSONArray("elements");
-			if (elements == null) {
-				return cameras;
-			}
+			root = new JSONObject(json);
+		} catch (Exception e) {
+			// Overpass reports some failures as an HTML page with HTTP 200. Parsed as "no
+			// cameras" that would be cached as an answer, which is how an outage becomes
+			// permanent-looking silence on the map.
+			throw new IOException("Overpass returned a non-JSON response: " + summarise(json), e);
+		}
+		// A runtime error - most often the query timing out - also arrives with HTTP 200, as a
+		// remark alongside an empty or partial element list. Never store that as a result.
+		String remark = root.optString("remark", null);
+		if (!Algorithms.isEmpty(remark)) {
+			throw new OverpassBusyException("Overpass reported: " + remark);
+		}
+		JSONArray elements = root.optJSONArray("elements");
+		if (elements == null) {
+			throw new IOException("Overpass response contained no elements array");
+		}
+		int positioned = 0;
+		try {
 			for (int i = 0; i < elements.length(); i++) {
 				JSONObject element = elements.optJSONObject(i);
 				if (element == null || !element.has("lat") || !element.has("lon")) {
@@ -159,12 +166,26 @@ public class OverpassAlprClient {
 				if (Double.isNaN(lat) || Double.isNaN(lon)) {
 					continue;
 				}
+				positioned++;
 				cameras.add(AlprCameraPoint.fromTags(id, lat, lon, readTags(element.optJSONObject("tags"))));
 			}
 		} catch (Exception e) {
 			throw new IOException("Could not parse Overpass response", e);
 		}
+		// Elements came back but not one of them had a position: that is what a wrong output mode
+		// looks like, and silently returning "no cameras" for it is the bug that shipped once.
+		if (elements.length() > 0 && positioned == 0) {
+			throw new IOException("Overpass returned " + elements.length()
+					+ " elements with no coordinates - the query asked for the wrong output mode");
+		}
 		return cameras;
+	}
+
+	/** A short, log-safe fragment of an unexpected response body. */
+	@NonNull
+	private static String summarise(@NonNull String body) {
+		String flat = body.replaceAll("\\s+", " ").trim();
+		return flat.length() > 200 ? flat.substring(0, 200) + "..." : flat;
 	}
 
 	@NonNull

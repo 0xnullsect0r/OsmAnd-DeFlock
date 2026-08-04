@@ -25,6 +25,8 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
@@ -46,10 +48,93 @@ public class AlprRegionManager {
 	/** How many regions' cameras to hold in memory at once. */
 	private static final int LOADED_REGION_LIMIT = 4;
 
-	public interface RegionProgressListener {
-		void onProgress(int cellsDone, int cellsTotal, int camerasSoFar);
+	/** Attempts per query cell before a download is given up as failed. */
+	private static final int MAX_CELL_ATTEMPTS = 4;
 
-		void onFinished(boolean success, @Nullable String error);
+	private static final long RETRY_BASE_MS = 5_000;
+	private static final long RETRY_MAX_MS = 60_000;
+
+	/** Pause between cells, to stay a well-behaved client of a free shared service. */
+	private static final long BETWEEN_CELLS_MS = 1_000;
+
+	/** Notified whenever any region's download status changes. */
+	public interface StatusListener {
+		void onRegionStatusChanged(@NonNull String regionKey, @NonNull DownloadStatus status);
+	}
+
+	/**
+	 * Where a region's download has got to.
+	 *
+	 * <p>Held by the manager rather than by whichever screen started it, so a download survives
+	 * the screen being recreated.
+	 */
+	public static class DownloadStatus {
+
+		public enum State {RUNNING, DONE, EMPTY, FAILED, CANCELLED}
+
+		private final State state;
+		private final int cellsDone;
+		private final int cellsTotal;
+		private final int cameras;
+		private final String error;
+
+		private DownloadStatus(State state, int cellsDone, int cellsTotal, int cameras, String error) {
+			this.state = state;
+			this.cellsDone = cellsDone;
+			this.cellsTotal = cellsTotal;
+			this.cameras = cameras;
+			this.error = error;
+		}
+
+		static DownloadStatus starting() {
+			return new DownloadStatus(State.RUNNING, 0, 0, 0, null);
+		}
+
+		static DownloadStatus running(int done, int total, int cameras) {
+			return new DownloadStatus(State.RUNNING, done, total, cameras, null);
+		}
+
+		static DownloadStatus done(int cameras) {
+			return new DownloadStatus(State.DONE, 0, 0, cameras, null);
+		}
+
+		static DownloadStatus empty() {
+			return new DownloadStatus(State.EMPTY, 0, 0, 0, null);
+		}
+
+		static DownloadStatus failed(@Nullable String error) {
+			return new DownloadStatus(State.FAILED, 0, 0, 0, error);
+		}
+
+		static DownloadStatus cancelled() {
+			return new DownloadStatus(State.CANCELLED, 0, 0, 0, null);
+		}
+
+		@NonNull
+		public State getState() {
+			return state;
+		}
+
+		public boolean isRunning() {
+			return state == State.RUNNING;
+		}
+
+		public int getCellsDone() {
+			return cellsDone;
+		}
+
+		public int getCellsTotal() {
+			return cellsTotal;
+		}
+
+		public int getCameras() {
+			return cameras;
+		}
+
+		@Nullable
+		public String getError() {
+			return error;
+		}
 	}
 
 	/** What the app knows about one downloadable-for-cameras region. */
@@ -115,9 +200,15 @@ public class AlprRegionManager {
 	private final AlprCoverageIndex coverage = new AlprCoverageIndex();
 
 	private volatile String endpoint = OverpassAlprClient.DEFAULT_ENDPOINT;
+	private volatile String fallbackEndpoint = OverpassAlprClient.FALLBACK_ENDPOINT;
 	private volatile boolean indexed;
 	// Fired after the set of region files changes, so the map layer can drop its cached query.
 	private volatile Runnable changeListener;
+
+	// regionKey -> where its download has got to, kept here so it outlives any screen.
+	private final Map<String, DownloadStatus> statuses = new ConcurrentHashMap<>();
+	private final Set<String> cancelled = ConcurrentHashMap.newKeySet();
+	private final List<StatusListener> statusListeners = new CopyOnWriteArrayList<>();
 
 	public AlprRegionManager(@NonNull OsmandApplication app) {
 		this.app = app;
@@ -125,6 +216,41 @@ public class AlprRegionManager {
 
 	public void setEndpoint(@NonNull String endpoint) {
 		this.endpoint = endpoint;
+		// Only the stock endpoint falls back to the public mirror. Someone who has deliberately
+		// pointed the plugin at a particular server - their own, or one they trust - did not ask
+		// for their search areas to be sent anywhere else, and a busy server is a poor excuse.
+		this.fallbackEndpoint = OverpassAlprClient.DEFAULT_ENDPOINT.equals(endpoint)
+				? OverpassAlprClient.FALLBACK_ENDPOINT : endpoint;
+	}
+
+	public void addStatusListener(@NonNull StatusListener listener) {
+		statusListeners.add(listener);
+	}
+
+	public void removeStatusListener(@NonNull StatusListener listener) {
+		statusListeners.remove(listener);
+	}
+
+	@Nullable
+	public DownloadStatus getStatus(@NonNull String regionKey) {
+		return statuses.get(regionKey);
+	}
+
+	/** Clears a finished status once a screen has shown it, so it is not reported twice. */
+	public void consumeStatus(@NonNull String regionKey) {
+		DownloadStatus status = statuses.get(regionKey);
+		if (status != null && !status.isRunning()) {
+			statuses.remove(regionKey);
+		}
+	}
+
+	private void setStatus(@NonNull String regionKey, @NonNull DownloadStatus status) {
+		statuses.put(regionKey, status);
+		app.runInUIThread(() -> {
+			for (StatusListener listener : statusListeners) {
+				listener.onRegionStatusChanged(regionKey, status);
+			}
+		});
 	}
 
 	public void setChangeListener(@Nullable Runnable changeListener) {
@@ -186,7 +312,16 @@ public class AlprRegionManager {
 			}
 			// The file records the bounds it was downloaded for, so indexing does not depend on
 			// OsmandRegions being loaded - which it is not, this early in the app's life.
-			QuadRect bounds = readDeclaredBounds(file);
+			AlprRegionFile.Header header = readHeader(file);
+			// An empty region file can only mislead: it would claim FULL coverage for ground the
+			// router then reports as camera-free with complete confidence. Builds that asked
+			// Overpass for the wrong output mode wrote exactly these, so ignore them and let the
+			// region be downloaded again.
+			if (header != null && header.getCount() == 0) {
+				log.warn("Ignoring empty ALPR region file: " + file.getName());
+				continue;
+			}
+			QuadRect bounds = header != null ? header.getBounds() : null;
 			if (bounds == null) {
 				bounds = boundsForRegion(key);
 			}
@@ -200,13 +335,12 @@ public class AlprRegionManager {
 	}
 
 	/**
-	 * Reads the bounds a file declares, without parsing its cameras.
+	 * Reads what a file declares about itself, without parsing its cameras.
 	 */
 	@Nullable
-	private QuadRect readDeclaredBounds(@NonNull File file) {
+	private AlprRegionFile.Header readHeader(@NonNull File file) {
 		try {
-			AlprRegionFile.Header header = AlprRegionFile.readHeader(file);
-			return header != null ? header.getBounds() : null;
+			return AlprRegionFile.readHeader(file);
 		} catch (IOException | RuntimeException e) {
 			log.warn("Could not read ALPR region header " + file.getName(), e);
 			return null;
@@ -340,36 +474,77 @@ public class AlprRegionManager {
 
 	// --- downloading -------------------------------------------------------
 
-	public void downloadRegion(@NonNull String regionKey, @NonNull RegionProgressListener listener) {
+	/**
+	 * Starts a download, unless one is already running for this region.
+	 *
+	 * <p>Progress is not reported through a callback owned by a screen: a region download outlives
+	 * the fragment that started it, so it is held here and observed through
+	 * {@link #addStatusListener}. That way rotating the device or walking away and coming back
+	 * shows the download still running rather than losing it.
+	 */
+	public void downloadRegion(@NonNull String regionKey) {
+		DownloadStatus current = statuses.get(regionKey);
+		if (current != null && current.isRunning()) {
+			return;
+		}
+		cancelled.remove(regionKey);
+		setStatus(regionKey, DownloadStatus.starting());
 		executor.submit(() -> {
 			try {
-				int count = downloadRegionBlocking(regionKey, listener);
-				app.runInUIThread(() -> listener.onFinished(true, null));
-				log.info("Downloaded " + count + " ALPR cameras for " + regionKey);
+				int count = downloadRegionBlocking(regionKey);
+				if (cancelled.remove(regionKey)) {
+					setStatus(regionKey, DownloadStatus.cancelled());
+				} else if (count == 0) {
+					// Not a failure, and emphatically not coverage: nothing was written, so the
+					// region still reads as "no data" rather than as ground known to be clear.
+					setStatus(regionKey, DownloadStatus.empty());
+				} else {
+					log.info("Downloaded " + count + " ALPR cameras for " + regionKey);
+					setStatus(regionKey, DownloadStatus.done(count));
+				}
+			} catch (CancelledException e) {
+				setStatus(regionKey, DownloadStatus.cancelled());
 			} catch (IOException | RuntimeException e) {
 				log.warn("Could not download ALPR cameras for " + regionKey, e);
-				app.runInUIThread(() -> listener.onFinished(false, e.getMessage()));
+				setStatus(regionKey, DownloadStatus.failed(e.getMessage()));
+			} finally {
+				cancelled.remove(regionKey);
 			}
 		});
 	}
 
-	private int downloadRegionBlocking(@NonNull String regionKey,
-	                                   @NonNull RegionProgressListener listener) throws IOException {
+	/** Asks a running download to stop at the next cell boundary. */
+	public void cancelDownload(@NonNull String regionKey) {
+		DownloadStatus current = statuses.get(regionKey);
+		if (current != null && current.isRunning()) {
+			cancelled.add(regionKey);
+		}
+	}
+
+	private int downloadRegionBlocking(@NonNull String regionKey) throws IOException {
 		QuadRect bounds = boundsForRegion(regionKey);
 		if (bounds == null) {
 			throw new IOException("No region bounds known for " + regionKey);
 		}
 		List<QuadRect> cells = AlprQueryGrid.split(bounds);
-		OverpassAlprClient client = new OverpassAlprClient(endpoint);
 		Map<Long, AlprCameraPoint> merged = new LinkedHashMap<>();
 		for (int i = 0; i < cells.size(); i++) {
-			for (AlprCameraPoint camera : client.fetch(cells.get(i))) {
+			if (cancelled.contains(regionKey)) {
+				throw new CancelledException();
+			}
+			if (i > 0) {
+				// Overpass is a shared free service; do not machine-gun it.
+				pause(regionKey, BETWEEN_CELLS_MS);
+			}
+			for (AlprCameraPoint camera : fetchCellWithRetries(regionKey, cells.get(i), i, cells.size())) {
 				merged.put(camera.getOsmId(), camera);
 			}
-			int done = i + 1;
-			int total = cells.size();
-			int soFar = merged.size();
-			app.runInUIThread(() -> listener.onProgress(done, total, soFar));
+			setStatus(regionKey, DownloadStatus.running(i + 1, cells.size(), merged.size()));
+		}
+		if (merged.isEmpty()) {
+			// Writing this would claim FULL coverage over ground nothing is known about, and the
+			// route option would then report "no cameras in view" with total confidence.
+			return 0;
 		}
 		AlprRegionFile file = new AlprRegionFile(regionKey, System.currentTimeMillis(), endpoint,
 				bounds, new ArrayList<>(merged.values()));
@@ -379,24 +554,67 @@ public class AlprRegionManager {
 		return merged.size();
 	}
 
-	// --- import / export / delete ------------------------------------------
+	/**
+	 * Fetches one cell, retrying a busy server and falling back to the mirror.
+	 *
+	 * <p>Overpass refuses a large share of requests at busy times, and a region is many cells, so
+	 * without this a long download almost always dies part way through. Every cell must succeed:
+	 * a region file assembled from some of its cells would claim coverage it does not have.
+	 */
+	@NonNull
+	private List<AlprCameraPoint> fetchCellWithRetries(@NonNull String regionKey,
+	                                                   @NonNull QuadRect cell, int index, int total)
+			throws IOException {
+		long backoff = RETRY_BASE_MS;
+		IOException last = null;
+		for (int attempt = 0; attempt < MAX_CELL_ATTEMPTS; attempt++) {
+			// Alternate to the mirror once the primary has refused, rather than waiting it out.
+			String target = (attempt > 0 && attempt % 2 == 1 && !endpoint.equals(fallbackEndpoint))
+					? fallbackEndpoint : endpoint;
+			try {
+				return new OverpassAlprClient(target).fetch(cell);
+			} catch (OverpassAlprClient.OverpassBusyException e) {
+				last = e;
+				log.info("Overpass busy on area " + (index + 1) + "/" + total + " via " + target
+						+ ", attempt " + (attempt + 1) + ": " + e.getMessage());
+			} catch (IOException e) {
+				last = e;
+				log.warn("Area " + (index + 1) + "/" + total + " failed via " + target
+						+ ", attempt " + (attempt + 1), e);
+			}
+			if (attempt < MAX_CELL_ATTEMPTS - 1) {
+				pause(regionKey, backoff);
+				backoff = Math.min(RETRY_MAX_MS, backoff * 2);
+			}
+		}
+		throw new IOException("Area " + (index + 1) + " of " + total + " could not be downloaded: "
+				+ (last == null ? "unknown error" : last.getMessage()), last);
+	}
 
 	/**
-	 * Copies an imported file into the region directory, validating it first so a bad file is
-	 * rejected rather than stored.
+	 * Waits, but keeps watching for a cancel. A backoff can be a minute long, and a Cancel button
+	 * that does nothing for a minute is not a Cancel button.
 	 */
-	public void importRegionFile(@NonNull File source, @NonNull String suggestedKey,
-	                             @NonNull RegionProgressListener listener) {
-		executor.submit(() -> {
-			try {
-				importRegionFileBlocking(source, suggestedKey);
-				app.runInUIThread(() -> listener.onFinished(true, null));
-			} catch (IOException | RuntimeException e) {
-				log.warn("Could not import ALPR region file", e);
-				app.runInUIThread(() -> listener.onFinished(false, e.getMessage()));
+	private void pause(@NonNull String regionKey, long ms) throws CancelledException {
+		long deadline = System.currentTimeMillis() + ms;
+		while (System.currentTimeMillis() < deadline) {
+			if (cancelled.contains(regionKey)) {
+				throw new CancelledException();
 			}
-		});
+			try {
+				Thread.sleep(Math.min(200, Math.max(1, deadline - System.currentTimeMillis())));
+			} catch (InterruptedException e) {
+				Thread.currentThread().interrupt();
+				throw new CancelledException();
+			}
+		}
 	}
+
+	/** Raised when the user stops a download; not an error worth reporting as one. */
+	private static class CancelledException extends IOException {
+	}
+
+	// --- import / export / delete ------------------------------------------
 
 	/**
 	 * Validates a candidate region file and stores it under the region key it declares.

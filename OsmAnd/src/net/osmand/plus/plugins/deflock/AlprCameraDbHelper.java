@@ -33,7 +33,13 @@ public class AlprCameraDbHelper extends SQLiteOpenHelper {
 	private static final Log log = PlatformUtil.getLog(AlprCameraDbHelper.class);
 
 	public static final String DB_NAME = "deflock_cameras";
-	private static final int DB_VERSION = 1;
+
+	/**
+	 * 2: forces a refetch of everything cached by builds that asked Overpass for {@code out tags}.
+	 * Those builds cached every tile as empty and fresh for 30 days, so without this bump the map
+	 * would stay blank for a month after the fix.
+	 */
+	private static final int DB_VERSION = 2;
 
 	/** Zoom level at which download tiles are cut. */
 	public static final int TILE_ZOOM = 10;

@@ -119,8 +119,12 @@ android {
 		// Version
 		nightlyFree {
 			dimension "version"
+			// Keep net.osmand.dev: Version.isFreeVersion and isDeveloperVersion key off this exact
+			// string, so changing it would flip this build to "paid" and unlock purchase-gated
+			// features it has no right to - and it would install alongside rather than upgrade.
 			applicationId "net.osmand.dev"
-			resValue "string", "app_name", "OsmAnd Nightly"
+			// The flavour this fork builds from, so this is the name users actually see.
+			resValue "string", "app_name", "OsmAnd DeFlock"
 			resValue "string", "app_edition", System.getenv("APP_EDITION") ? System.getenv("APP_EDITION") : ""
 			// resConfig "en"
 		}

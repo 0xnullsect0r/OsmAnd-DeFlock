@@ -27,6 +27,7 @@ public class DeFlockSettingsFragment extends BaseSettingsFragment {
 		setupDetourBudget();
 		setupOfflineData();
 		setupClearCache();
+		loadSummariesAsync();
 	}
 
 	private void setupShowCameras() {
@@ -98,31 +99,54 @@ public class DeFlockSettingsFragment extends BaseSettingsFragment {
 
 	private void setupOfflineData() {
 		Preference preference = findPreference(OFFLINE_DATA_PREF_ID);
-		if (preference == null) {
-			return;
+		if (preference != null) {
+			preference.setIcon(getActiveIcon(R.drawable.ic_action_map_download));
+			preference.setSummary(R.string.alpr_offline_data_description);
 		}
-		preference.setIcon(getActiveIcon(R.drawable.ic_action_map_download));
-		AlprRegionManager manager = plugin.getCameraRepository().getRegionManager();
-		int downloaded = 0;
-		int total = 0;
-		for (AlprRegionManager.RegionState state : manager.getRegionStates()) {
-			total++;
-			if (state.hasData()) {
-				downloaded++;
-			}
-		}
-		preference.setSummary(total == 0
-				? getString(R.string.alpr_offline_data_description)
-				: getString(R.string.alpr_offline_data_summary, downloaded, total));
 	}
 
 	private void setupClearCache() {
 		Preference preference = findPreference(CLEAR_CACHE_PREF_ID);
 		if (preference != null) {
 			preference.setIcon(getActiveIcon(R.drawable.ic_action_delete_dark));
-			int cached = plugin.getCameraRepository().getCachedCameraCount();
-			preference.setSummary(getString(R.string.alpr_cached_cameras, cached));
 		}
+	}
+
+	/**
+	 * Fills in the two summaries that cost real work to produce: counting downloaded regions means
+	 * reading a header out of every region file, and the cached camera count is a database query.
+	 * Neither belongs on the thread drawing the screen, so both start as placeholders.
+	 */
+	private void loadSummariesAsync() {
+		AlprRegionManager manager = plugin.getCameraRepository().getRegionManager();
+		new Thread(() -> {
+			int downloaded = 0;
+			int total = 0;
+			for (AlprRegionManager.RegionState state : manager.getRegionStates()) {
+				total++;
+				if (state.hasData()) {
+					downloaded++;
+				}
+			}
+			int cached = plugin.getCameraRepository().getCachedCameraCount();
+
+			int finalDownloaded = downloaded;
+			int finalTotal = total;
+			app.runInUIThread(() -> {
+				if (!isAdded()) {
+					return;
+				}
+				Preference offline = findPreference(OFFLINE_DATA_PREF_ID);
+				if (offline != null && finalTotal > 0) {
+					offline.setSummary(getString(R.string.alpr_offline_data_summary,
+							finalDownloaded, finalTotal));
+				}
+				Preference clear = findPreference(CLEAR_CACHE_PREF_ID);
+				if (clear != null) {
+					clear.setSummary(getString(R.string.alpr_cached_cameras, cached));
+				}
+			});
+		}, "alpr-settings-summaries").start();
 	}
 
 	@Override

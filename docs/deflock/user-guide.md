@@ -37,7 +37,26 @@ region, so `Us_indiana_northamerica.obf` gets `deflock/us_indiana_northamerica.d
 
 Once a region is downloaded it never expires and is never re-fetched on its own — refreshing is
 your decision, and the screen shows when each region was last downloaded. Large regions are
-fetched in several requests, so the progress counter moves in steps.
+fetched in several requests, so the progress counter moves in steps. A download keeps going if
+you leave the screen, and tapping the region while it runs offers to cancel it.
+
+Overpass is a free shared service and refuses requests when it is busy, so each part of a
+region is retried a few times before the download gives up. **If you have not changed the
+Overpass endpoint, a refused request is retried against a public mirror**
+(`overpass.kumi.systems`) — worth knowing, because the area you are downloading is visible to
+whichever server answers. Setting a specific endpoint in settings disables that: a server you
+chose deliberately is the only one that will be asked.
+
+The mirrors are independent copies of OpenStreetMap and are not always equally current. Asking
+both for the same area during testing returned 178 cameras from one and 92 from the other, so a
+region fetched partly via the fallback can be less complete than one fetched entirely from the
+main server. Re-downloading the region later is the fix.
+
+Downloads are all-or-nothing. If part of a region cannot be fetched, nothing is written and
+whatever you already had is left alone, because half a region would claim coverage it does not
+have. If a region genuinely has no ALPR cameras mapped yet, it says so and stores nothing —
+that is different from having data, and the router treats it as unknown ground rather than as
+ground known to be clear.
 
 **No internet at all?** A region file can be shared from a device that did download it, and
 imported through the normal Android share sheet. Plain GeoJSON exports from DeFlock or Overpass

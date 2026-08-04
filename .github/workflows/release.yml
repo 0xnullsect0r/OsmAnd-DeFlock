@@ -141,7 +141,7 @@ jobs:
           installing from your browser or file manager.
 
           - Contains \`arm64-v8a\` and \`armeabi-v7a\`, so it installs on any Android phone.
-          - Installs as **OsmAnd Nightly** (\`net.osmand.dev\`), so it sits alongside a
+          - Installs as **OsmAnd DeFlock** (\`net.osmand.dev\`), so it sits alongside a
             Play Store OsmAnd rather than replacing it.
           - **Debug-signed** with the key committed in this repository. Android may warn about
             it, and it cannot be installed over an APK signed with a different key - uninstall

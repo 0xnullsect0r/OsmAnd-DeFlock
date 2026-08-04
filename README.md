@@ -103,7 +103,7 @@ is nothing to compile.
 A few things worth knowing before you do:
 
 - The APK contains both `arm64-v8a` and `armeabi-v7a`, so it installs on any Android phone.
-- It installs as **OsmAnd Nightly** (application id `net.osmand.dev`), so it sits alongside a
+- It installs as **OsmAnd DeFlock** (application id `net.osmand.dev`), so it sits alongside a
   Play Store OsmAnd instead of replacing it. Your existing maps and settings are untouched.
 - It is **debug-signed**, with the key committed in this repository. Android may warn about
   that, and it cannot install over an APK signed with a different key — uninstall the old one

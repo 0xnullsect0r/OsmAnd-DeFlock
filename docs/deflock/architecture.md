@@ -157,6 +157,31 @@ it every 4 m, capped at 64 samples. The clipping is what keeps a 5 km road segme
 costing thousands of samples, and the sampling is what catches the case where the *nearest*
 point of a road is outside the cone but a further part of it is inside.
 
+### `AlprOverpassQuery` (OsmAnd-java)
+
+The query text, kept in the pure-Java module purely so it can be unit tested — because getting
+it wrong is *silent*.
+
+The output mode **must be `out body`**. `out tags` looks like the leaner request and returns the
+same elements, but for nodes it omits the coordinates, and `OverpassAlprClient.parse` drops any
+element with no position. Measured against the live API over one bounding box:
+
+| output mode | elements returned | with `lat`/`lon` |
+|---|---|---|
+| `out tags;` | 178 | **0** |
+| `out body;` | 178 | 178 |
+
+A build shipped with `out tags`. Every request succeeded, every camera was thrown away, and the
+result was indistinguishable from an area with no cameras in it — on the map, in the region
+downloads, and in routing. `AlprOverpassQueryTest` asserts the mode is `body` and that neither
+`out tags` nor `out skel` (coordinates but no tags, so no direction) ever appears.
+
+The related rule, in `OverpassAlprClient.parse`: **an empty answer is never a result.** Overpass
+reports runtime errors and timeouts with HTTP 200 — sometimes as an HTML page, sometimes as JSON
+carrying a `remark` — and it is a 30-day cache, so one silently-swallowed error becomes a month
+of an empty map. A `remark`, a non-JSON body, a missing `elements` array, and elements that all
+lack coordinates are each raised as an exception rather than cached as "no cameras here".
+
 ### `AlprCameraDbHelper` / `AlprCameraRepository` (Android)
 
 The cache. Downloads are cut into **zoom 10 tiles** (~40 km), each valid for **30 days**;
@@ -185,6 +210,17 @@ maps each to a region, and owns download / import / delete. Two details worth kn
 - **Downloads are split into a grid** of roughly 2° cells and merged, because a single Overpass
   query over a country times out. Cells are merged in memory and written only once all succeed,
   so a failure part-way through leaves no file rather than a partial one.
+- **Each cell is retried** up to 4 times with exponential backoff, pausing a second between
+  cells. Overpass refuses a large share of requests at busy times, and a region is many cells,
+  so without this a long download nearly always dies part way. When the endpoint is the stock
+  one, alternate attempts go to the public mirror; a *custom* endpoint never falls back, because
+  someone who chose a particular server did not ask for their search areas to go elsewhere.
+- **An empty region is not written.** A file with no cameras would register as `FULL` coverage,
+  and routing would then report "no ALPR cameras in view" over ground nothing is known about.
+  The download reports "no cameras mapped here" instead, and `reindex` skips any existing
+  zero-camera file for the same reason.
+- **Download status lives here, not in the screen** that started it, so rotating the device or
+  navigating away does not lose a download in flight.
 - **Cameras load lazily** with a small LRU (4 regions). The index of region → bounds is loaded
   up front and is enough to answer coverage without reading any cameras.
 

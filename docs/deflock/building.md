@@ -349,6 +349,22 @@ fix as [prerequisite 4](#4-gradle-heap--do-not-skip-this).
 The workflow also pins `LANG`/`LC_ALL` to `C.UTF-8` for the same reason a local build needs a
 UTF-8 locale: `collectTestResources` hashes `ludwigstraße.obf.gz`.
 
+### Never put `${{ }}` inside a `run:` block
+
+Actions substitutes `${{ ... }}` across the whole `run:` string *before* bash sees any of it, so
+a `#` comment is no protection. The first version of this workflow carried a comment mentioning
+an empty `${{ }}`, and the file was rejected outright — *"An expression was expected"* — which
+means no jobs, no `on:` evaluation, and a tag push that silently produces nothing. A run named
+after the file path instead of the workflow's `name:`, finishing in under a second with zero
+jobs, is what that looks like in the Actions list.
+
+Every expression now arrives through `env:` instead, which is also what GitHub recommends for
+avoiding script injection. If you add one, keep it out of `run:`, and check the file with:
+
+```bash
+grep -n '\${{' .github/workflows/release.yml    # every hit should be an env:, with: or if:
+```
+
 ## Rebasing onto newer OsmAnd
 
 The fork touches few upstream files deliberately (listed in

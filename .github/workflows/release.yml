@@ -107,6 +107,8 @@ jobs:
 
       - name: Name the APK after the tag
         id: package
+        env:
+          TAG: ${{ steps.version.outputs.tag }}
         run: |
           set -euo pipefail
           mapfile -t APKS < <(find OsmAnd/build/outputs/apk -name '*.apk' -type f)
@@ -115,7 +117,7 @@ jobs:
             printf '  %s\n' "${APKS[@]}" >&2
             exit 1
           fi
-          NAME="OsmAnd-DeFlock-${{ steps.version.outputs.tag }}-armonly.apk"
+          NAME="OsmAnd-DeFlock-${TAG}-armonly.apk"
           mkdir -p dist
           mv "${APKS[0]}" "dist/$NAME"
           ( cd dist && sha256sum "$NAME" > "$NAME.sha256" )
@@ -125,25 +127,29 @@ jobs:
 
       - name: Write the release notes preamble
         if: github.ref_type == 'tag'
+        env:
+          NAME: ${{ steps.package.outputs.name }}
+          SHA256: ${{ steps.package.outputs.sha256 }}
         run: |
-          # Quoted delimiter: nothing in here is expanded by the shell. The ${{ }} expressions
-          # are substituted by Actions before this script runs.
-          cat > release-notes.md <<'NOTES'
+          set -euo pipefail
+          # Unquoted delimiter, so $NAME and $SHA256 expand. Backticks are escaped to stay
+          # literal. Values arrive through env rather than being pasted into this script.
+          cat > release-notes.md <<NOTES
           ### Install
 
-          Download **${{ steps.package.outputs.name }}** below and open it on your phone. You
-          will have to allow installing from your browser or file manager.
+          Download **$NAME** below and open it on your phone. You will have to allow
+          installing from your browser or file manager.
 
-          - Contains `arm64-v8a` and `armeabi-v7a`, so it installs on any Android phone.
-          - Installs as **OsmAnd Nightly** (`net.osmand.dev`), so it sits alongside a
+          - Contains \`arm64-v8a\` and \`armeabi-v7a\`, so it installs on any Android phone.
+          - Installs as **OsmAnd Nightly** (\`net.osmand.dev\`), so it sits alongside a
             Play Store OsmAnd rather than replacing it.
           - **Debug-signed** with the key committed in this repository. Android may warn about
             it, and it cannot be installed over an APK signed with a different key - uninstall
             the old one first if you hit that.
 
-          ```
-          SHA-256  ${{ steps.package.outputs.sha256 }}
-          ```
+          \`\`\`
+          SHA-256  $SHA256
+          \`\`\`
 
           NOTES
 
@@ -152,6 +158,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ steps.version.outputs.tag }}
+          PRERELEASE: ${{ steps.version.outputs.prerelease }}
         run: |
           set -euo pipefail
           if gh release view "$TAG" > /dev/null 2>&1; then
@@ -159,7 +166,7 @@ jobs:
             gh release upload "$TAG" dist/* --clobber
           else
             ARGS=(--title "OsmAnd-DeFlock $TAG" --notes-file release-notes.md --generate-notes)
-            if [ "${{ steps.version.outputs.prerelease }}" = true ]; then
+            if [ "$PRERELEASE" = true ]; then
               ARGS+=(--prerelease)
             fi
             gh release create "$TAG" "${ARGS[@]}" dist/*

@@ -150,7 +150,31 @@ public class Version {
 		}
 	}
 
+	/**
+	 * True for this fork's own build, which ships every locally computed feature unlocked.
+	 *
+	 * <p>Nothing here is sold and nothing here can take a payment, so a free/paid split has no
+	 * meaning: it only produced subscription prompts, a map download cap and a locked-out Android
+	 * Auto on a build the user compiled themselves.
+	 *
+	 * <p>This is upstream's own arrangement rather than a workaround. The {@code androidFull}
+	 * flavour ships as "OsmAnd~", and {@link #isDeveloperBuild} already returns true for any app
+	 * whose name contains a tilde, which is what makes that build fully featured. This fork simply
+	 * says so explicitly instead of relying on a character in a display name - the name stays
+	 * "OsmAnd DeFlock", and a rebase onto upstream reintroduces this deliberately rather than
+	 * losing it silently.
+	 *
+	 * <p>It unlocks features, not services: OsmAnd Cloud is validated on OsmAnd's servers and is
+	 * untouched by any of this.
+	 */
+	public static boolean isUnlockedFork(@NonNull OsmandApplication app) {
+		return FREE_DEV_VERSION_NAME.equals(app.getPackageName());
+	}
+
 	public static boolean isFreeVersion(@NonNull OsmandApplication app) {
+		if (isUnlockedFork(app)) {
+			return false;
+		}
 		return CollectionUtils.equalsToAny(app.getPackageName(), FREE_VERSION_NAME, FREE_DEV_VERSION_NAME) || isHuawei();
 	}
 
@@ -172,7 +196,9 @@ public class Version {
 	}
 
 	public static boolean isDeveloperBuild(@NonNull OsmandApplication app) {
-		return getAppName(app).contains("~");
+		// The flag every purchase check consults through
+		// InAppPurchaseUtils.checkDeveloperBuildIfNeeded - see isUnlockedFork.
+		return isUnlockedFork(app) || getAppName(app).contains("~");
 	}
 
 	public static boolean isTripltekBuild() {

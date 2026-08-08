@@ -367,6 +367,31 @@ avoiding script injection. If you add one, keep it out of `run:`, and check the 
 grep -n '\${{' .github/workflows/release.yml    # every hit should be an env:, with: or if:
 ```
 
+## Fork patches outside the DeFlock feature
+
+One change has nothing to do with cameras and is easy to lose on a rebase, so it is recorded
+here: **`Version.isUnlockedFork()`**, which is true for `net.osmand.dev`.
+
+It makes `isFreeVersion()` false and `isDeveloperBuild()` true, and everything else follows from
+upstream's existing logic — `InAppPurchaseUtils.checkDeveloperBuildIfNeeded` consults
+`isDeveloperBuild`, which is the same mechanism that makes the `androidFull` "OsmAnd~" build
+fully featured. That single flag removes the download cap and the subscription prompts, and
+unlocks Android Auto and the local Pro features.
+
+Four places extend it, and each is commented at the site:
+
+| Where | Why |
+|---|---|
+| `InAppPurchaseUtils.isBackupAvailable` | stays **false** — OsmAnd Cloud is server-validated and cannot work here |
+| `InAppPurchaseUtils.isExportTypeAvailable` | forced true — it shares a gate with cloud backup, and export-to-file is local |
+| `ChoosePlanFragment.showInstance` | the single funnel all 45 purchase prompts pass through |
+| `MainSettingsFragment`, `MapActivityActions`, `TracksFreeBackupCard`, `DiscountHelper.checkAndDisplay` | remove the cloud and storefront entry points |
+
+`TracksFreeBackupCard` is the counter-intuitive one: it advertises Pro *because* backup is
+unavailable, so leaving it alone would have made it permanent rather than removing it.
+
+After a rebase, check that `grep -rn "isUnlockedFork" OsmAnd/src` still returns all of these.
+
 ## Rebasing onto newer OsmAnd
 
 The fork touches few upstream files deliberately (listed in

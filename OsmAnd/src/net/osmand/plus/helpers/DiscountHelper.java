@@ -101,6 +101,11 @@ public class DiscountHelper {
 
 	public static void checkAndDisplay(MapActivity mapActivity) {
 		OsmandApplication app = mapActivity.getApp();
+		// Sales and promotions have nothing to advertise in a build that sells nothing, and this
+		// also stops the periodic fetch that goes looking for them.
+		if (Version.isUnlockedFork(app)) {
+			return;
+		}
 		OsmandSettings settings = app.getSettings();
 		boolean forceShowDiscountBottomSheet = settings.SHOULD_SHOW_DISCOUNT_BOTTOM_SHEET.get();
 		if (!settings.INAPPS_READ.get() && !(Version.isDeveloperVersion(app) && forceShowDiscountBottomSheet)) {

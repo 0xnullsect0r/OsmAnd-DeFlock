@@ -122,13 +122,29 @@ public class InAppPurchaseUtils {
 		return isOsmAndProAvailable(app) || isBrandPromoAvailable(app);
 	}
 
+	/**
+	 * Whether a settings category can be exported.
+	 *
+	 * <p>Shared by cloud backup and by plain export to a file, which is why this fork answers it
+	 * separately from {@link #isBackupAvailable}: writing your own settings to a file on your own
+	 * phone is a local feature, and gating it behind a cloud subscription that does not exist here
+	 * would restrict something that has nothing to do with cloud.
+	 */
 	public static boolean isExportTypeAvailable(@NonNull OsmandApplication app,
 	                                            @NonNull ExportType exportType) {
-		return isBackupAvailable(app) || exportType.isAvailableInFreeVersion();
+		return Version.isUnlockedFork(app) || isBackupAvailable(app)
+				|| exportType.isAvailableInFreeVersion();
 	}
 
+	/**
+	 * OsmAnd Cloud backup and sync.
+	 *
+	 * <p>Deliberately not unlocked in this fork. It is validated on OsmAnd's servers, so no
+	 * client-side change can make it work - flipping this true would only produce an
+	 * unlocked-looking button that dead-ends at a login screen. The cloud UI is removed instead.
+	 */
 	public static boolean isBackupAvailable(@NonNull OsmandApplication app) {
-		return isOsmAndProAvailable(app);
+		return !Version.isUnlockedFork(app) && isOsmAndProAvailable(app);
 	}
 
 	public static boolean isWeatherAvailable(@NonNull OsmandApplication app) {

@@ -10,6 +10,7 @@ import androidx.annotation.NonNull;
 import androidx.fragment.app.FragmentActivity;
 
 import net.osmand.plus.OsmandApplication;
+import net.osmand.plus.Version;
 import net.osmand.plus.R;
 import net.osmand.plus.helpers.DiscountHelper;
 import net.osmand.plus.inapp.InAppPurchaseUtils;
@@ -117,6 +118,12 @@ public class TracksFreeBackupCard extends BaseCard {
 	}
 
 	public static boolean shouldShow(@NonNull OsmandApplication app, @NonNull TrackFolder rootFolder) {
+		// This card advertises OsmAnd Pro for cloud backup, and it appears precisely *because*
+		// backup is unavailable - so in this fork, where cloud is deliberately out of reach, it
+		// would show permanently. There is nothing here to buy, so it never shows.
+		if (Version.isUnlockedFork(app)) {
+			return false;
+		}
 		boolean hasTracks = !Algorithms.isEmpty(rootFolder.getFlattenedTrackItems());
 		boolean backupAvailable = InAppPurchaseUtils.isBackupAvailable(app);
 		boolean dismissed = app.getSettings().TRACKS_FREE_ACCOUNT_CARD_DISMISSED.get();

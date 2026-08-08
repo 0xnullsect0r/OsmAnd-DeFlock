@@ -93,6 +93,34 @@ pass before it goes out.
 
 ---
 
+## What is unlocked
+
+Every feature your device computes on its own is enabled, with no purchase prompts, no map
+download cap, and no locked Android Auto:
+
+- unlimited map downloads
+- Android Auto
+- 3D maps, contour lines, depth contours, weather layers
+- pro widgets, route coloring, the gradient editor
+- exporting and importing your settings to a file
+
+This is upstream's own arrangement, not a workaround. OsmAnd already publishes a fully unlocked
+build — the `androidFull` flavour ships as **OsmAnd~**, and `Version.isDeveloperBuild()` returns
+true for any app whose name contains a tilde, which is what makes the F-Droid build complete.
+This fork says the same thing explicitly through `Version.isUnlockedFork()`, so it keeps its own
+name. The source is GPLv3 and you compiled it yourself.
+
+**It unlocks features, not services.** OsmAnd Cloud backup and sync are validated on OsmAnd's
+servers, so no change here could enable them — and rather than leave an unlocked-looking button
+that dead-ends at a login screen, the cloud UI is removed. There is nothing in this build
+offering to sell or activate anything. Local backup, meaning export and import to a file on your
+own phone, is untouched.
+
+If you want OsmAnd's cloud, subscriptions, or to support the project, use the official app —
+this fork is not a way around paying for a service, and it cannot access one.
+
+---
+
 ## Using it
 
 1. **Menu → Plugins → ALPR cameras (DeFlock)** → enable. Nothing appears until you do; the

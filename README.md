@@ -33,7 +33,23 @@ shared to a device that never goes online.
 **"Avoid ALPR camera view" when planning a route**, with a slider for how much extra travel
 time you will accept. Set it to 10 minutes and the router will detour around cameras as long
 as that costs under 10 minutes; past that it gives ground — motorways first — until the
-detour fits. Afterwards the route option reports what actually happened:
+detour fits.
+
+A second slider sets how far to **keep away** from a camera (150 m by default) in *any*
+direction, on top of the mapped field of view — because a `direction` tag can be wrong and
+cameras get re-aimed without anyone editing OpenStreetMap.
+
+Afterwards you can see exactly what the detour bought: the fastest route is listed beside the
+one you were given, and drawn on the map as a dimmed dashed line.
+
+```
+This route vs the fastest
+  Fastest             24 min · 18 km · 7 cameras
+  Avoiding cameras    28 min · 21 km · 0 cameras
+  +4 min and +3 km to stay out of camera view
+```
+
+The route option row carries the short version:
 
 ```
 Avoid ALPR camera view
@@ -136,6 +152,9 @@ These are real, and worth reading before relying on this.
 - **Coverage is only as good as OpenStreetMap.** An unmapped camera is an invisible camera.
   Avoiding a camera's mapped view is not a guarantee you were not photographed, and this tool
   should not be treated as one.
+- **The camera count is measured, not assumed.** After the route is calculated the app walks it
+  and counts the cameras that can see it, so "no cameras in view" is something it checked rather
+  than something it inferred from having excluded some roads.
 - **Routing only uses data already downloaded.** It will not fetch mid-calculation, so a region
   you never downloaded is a region with no avoidance. The route option says so rather than
   reporting a clean route.
@@ -146,12 +165,13 @@ These are real, and worth reading before relying on this.
 
 | Check | Result |
 |---|---|
-| `:OsmAnd-java:test` | 608 tests, 0 failures (62 from this fork) |
+| `:OsmAnd-java:test` | 619 tests, 0 failures (73 from this fork) |
 | `:OsmAnd:assembleNightlyFreeOpenglArmonlyDebug` | passes — the APK published by each release |
 | Cameras drawn on the map, with direction | **confirmed on device** |
 | Offline region download | **confirmed on device** |
-| Routing avoidance and the detour budget | **confirmed on device** |
 | Working offline / in airplane mode | **confirmed on device** |
+| Routing avoidance and the detour budget | confirmed on device, then found **broken** on a long route inside a fully downloaded region — the camera cap discarded by OSM id, so the cameras along the route were the ones thrown away. Fixed by selecting on distance to the route, with a regression test; **the fix itself has not yet been run on hardware** |
+| Route comparison and the keep-away margin | **not yet run on hardware** — unit tested only |
 | Region file and Overpass JSON parsing | **not automatically tested** — both use `org.json`, which needs an Android runtime; the region-key, coverage, query-building and camera-tag logic beneath them is tested on the JVM |
 
 ---

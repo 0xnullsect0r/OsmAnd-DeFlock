@@ -98,6 +98,36 @@ never downloaded looks exactly like a route that successfully avoided every came
 the qualifier *adds to* the result rather than hiding it — if avoidance worked, you still see
 the detour it cost.
 
+The camera count is measured on the route you were actually given, not inferred from what the
+router was told to avoid. If a detour still passes a camera, it says so.
+
+### Seeing what the detour bought
+
+Tap **Avoid ALPR camera view** after a route is calculated and the sheet shows both routes:
+
+```
+This route vs the fastest
+  Fastest             24 min · 18 km · 7 cameras
+  Avoiding cameras    28 min · 21 km · 0 cameras
+  +4 min and +3 km to stay out of camera view
+```
+
+The fastest route is also drawn on the map as a **dimmed dashed line** beside the one you are
+given, so you can see exactly where the two part company and what the detour is worth.
+
+### Keeping farther away
+
+**Keep away from cameras** (in the same sheet, default 150 m) is separate from detection range.
+Range is an estimate of what a camera can read, and only covers the direction it is recorded as
+facing. The keep-away radius says how close you are willing to drive to one *in any direction*.
+
+That distinction matters because a `direction` tag can be wrong, and cameras get re-aimed
+without anyone editing OpenStreetMap. Driving past the back of one on the strength of a tag
+nobody has checked is a thin guarantee. Set it to 0 to avoid only the mapped field of view;
+raise it for wider berth and longer detours. With avoidance on, the map draws the keep-away
+radius as a faint circle around each camera, so you can see what the setting is costing before
+you plan a route.
+
 Setting the slider to **0** means "only avoid cameras if it is free". Setting it high means
 "detour a lot to stay unseen".
 
@@ -113,6 +143,7 @@ endpoint is per navigation profile, so your car and bicycle profiles can differ.
 | Field of view | 60° | How wide its view is assumed to be. `Direction not mapped` treats every camera as omnidirectional. |
 | Avoid ALPR camera view | off | Whether routing avoids camera view for this profile. |
 | Acceptable detour | 10 min | The detour budget described above. |
+| Keep away from cameras | 150 m | How close a route may come to a camera in any direction, on top of the mapped field of view. |
 | Offline camera data | — | Per-region downloads, described above. |
 | Clear downloaded cameras | — | Clears the *browsing cache* only. Downloaded regions are unaffected; delete those from the offline data screen. |
 

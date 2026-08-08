@@ -90,6 +90,18 @@ public class AlprRoadExclusionResolver {
 	 */
 	public static Result resolve(RoutingContext ctx, List<AlprCameraPoint> cameras,
 	                             double rangeM, double coneDeg) throws IOException {
+		return resolve(ctx, cameras, rangeM, coneDeg, 0);
+	}
+
+	/**
+	 * As {@link #resolve(RoutingContext, List, double, double)}, with a keep-away radius applied
+	 * around every camera - see
+	 * {@link CameraCoverage#covers(AlprCameraPoint, double, double, double, double, double)}.
+	 *
+	 * @param marginM how close a road may come to a camera in any direction
+	 */
+	public static Result resolve(RoutingContext ctx, List<AlprCameraPoint> cameras,
+	                             double rangeM, double coneDeg, double marginM) throws IOException {
 		Result result = new Result();
 		if (ctx == null || cameras == null || cameras.isEmpty()) {
 			return result;
@@ -107,7 +119,7 @@ public class AlprRoadExclusionResolver {
 					result.watchedCameras.add(camera.getOsmId());
 					continue;
 				}
-				if (isWatched(camera, road, rangeM, coneDeg)) {
+				if (isWatched(camera, road, rangeM, coneDeg, marginM)) {
 					result.addWatchedRoad(road.getId(), road.getHighway(), camera.getOsmId());
 				}
 			}
@@ -116,7 +128,7 @@ public class AlprRoadExclusionResolver {
 	}
 
 	private static boolean isWatched(AlprCameraPoint camera, RouteDataObject road,
-	                                 double rangeM, double coneDeg) {
+	                                 double rangeM, double coneDeg, double marginM) {
 		for (int i = 0; i < road.getPointsLength() - 1; i++) {
 			double lat1 = MapUtils.get31LatitudeY(road.getPoint31YTile(i));
 			double lon1 = MapUtils.get31LongitudeX(road.getPoint31XTile(i));

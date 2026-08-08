@@ -465,10 +465,17 @@ public class RouteProvider {
 		// over ground that has no downloaded camera data behind it.
 		AlprCoverageIndex.Coverage coverage = AlprAvoidanceHelper.getCorridorCoverage(params);
 
-		// How many cameras the calculation had to work with, whatever their source. Coverage on its
-		// own cannot tell "nothing was known" apart from "something was known, maybe not all of it".
-		List<AlprCameraPoint> cameras = AlprAvoidanceHelper.getCorridorCameras(params);
+		// Cameras are chosen by distance to the road actually being planned, not by a bounding box
+		// around the trip. A box around a long journey is enormous, and a downloaded region holds
+		// more cameras than one calculation can carry - picking the wrong ones is what made
+		// avoidance silently stop working the more data was downloaded.
+		List<LatLon> baselinePath = AlprAvoidanceHelper.pathOf(baseline);
+		List<AlprCameraPoint> cameras = AlprAvoidanceHelper.getCorridorCameras(params, baselinePath);
 		int considered = cameras.size();
+		int fastestCameras = AlprAvoidanceHelper.countWatching(params, baselinePath, cameras);
+		int baseSeconds = Math.round(baseline.getRoutingTime());
+		int baseMetres = baseline.getWholeDistance();
+
 		if (cameras.isEmpty()) {
 			plugin.setLastAvoidanceOutcome(new AlprAvoidanceHelper.Outcome(0, 0, 0, false, coverage, 0));
 			return baseline;
@@ -479,19 +486,22 @@ public class RouteProvider {
 			RoutingContext lookupCtx = baseEnv.getComplexCtx() != null ? baseEnv.getComplexCtx() : baseEnv.getCtx();
 			watched = AlprRoadExclusionResolver.resolve(lookupCtx, cameras,
 					plugin.ALPR_VIEW_RANGE_M.getModeValue(params.mode),
-					plugin.ALPR_VIEW_CONE_DEG.getModeValue(params.mode));
+					plugin.ALPR_VIEW_CONE_DEG.getModeValue(params.mode),
+					plugin.ALPR_AVOIDANCE_MARGIN_M.getModeValue(params.mode));
 		} catch (IOException | RuntimeException e) {
 			log.warn("Could not resolve ALPR camera coverage, using the plain route", e);
 			return baseline;
 		}
 		if (watched.isEmpty()) {
-			plugin.setLastAvoidanceOutcome(new AlprAvoidanceHelper.Outcome(0, 0, 0, false, coverage, considered));
+			AlprAvoidanceHelper.Outcome outcome =
+					new AlprAvoidanceHelper.Outcome(0, fastestCameras, 0, false, coverage, considered);
+			outcome.setComparison(baseSeconds, baseMetres, fastestCameras, baseSeconds, baseMetres, null);
+			plugin.setLastAvoidanceOutcome(outcome);
 			return baseline;
 		}
 
 		int budgetSeconds = plugin.getDetourBudgetSeconds(params.mode);
 		float baseTime = baseline.getRoutingTime();
-		int totalCameras = watched.getCameraCount();
 
 		// Round -1 is full avoidance; later rounds progressively re-admit faster road classes.
 		for (int round = -1; round < AlprRoadExclusionResolver.getRelaxationRounds(); round++) {
@@ -508,8 +518,22 @@ public class RouteProvider {
 			if (avoiding.isCalculated()) {
 				int detour = Math.max(0, Math.round(avoiding.getRoutingTime() - baseTime));
 				if (detour <= budgetSeconds) {
-					plugin.setLastAvoidanceOutcome(new AlprAvoidanceHelper.Outcome(
-							totalCameras, 0, detour, round >= 0, coverage, considered));
+					// Measure the route that came back rather than trusting the exclusion set. An
+					// instruction to the router is not a result, and a detour can pass a camera
+					// that was never in the excluded set.
+					List<LatLon> chosenPath = AlprAvoidanceHelper.pathOf(avoiding);
+					int stillWatching = AlprAvoidanceHelper.countWatching(params, chosenPath, cameras);
+					if (stillWatching > 0) {
+						log.info("ALPR avoidance round " + round + " still passes " + stillWatching
+								+ " cameras; reporting that rather than claiming a clean route");
+					}
+					AlprAvoidanceHelper.Outcome outcome = new AlprAvoidanceHelper.Outcome(
+							Math.max(0, fastestCameras - stillWatching), stillWatching, detour,
+							round >= 0, coverage, considered);
+					outcome.setComparison(baseSeconds, baseMetres, fastestCameras,
+							Math.round(avoiding.getRoutingTime()), avoiding.getWholeDistance(),
+							baselinePath);
+					plugin.setLastAvoidanceOutcome(outcome);
 					return avoiding;
 				}
 				log.info("ALPR avoidance round " + round + " costs " + detour + "s, budget is "
@@ -517,7 +541,10 @@ public class RouteProvider {
 			}
 		}
 		// Nothing fit the budget: the fastest route wins, and the UI says how many cameras see it.
-		plugin.setLastAvoidanceOutcome(new AlprAvoidanceHelper.Outcome(0, totalCameras, 0, true, coverage, considered));
+		AlprAvoidanceHelper.Outcome outcome =
+				new AlprAvoidanceHelper.Outcome(0, fastestCameras, 0, true, coverage, considered);
+		outcome.setComparison(baseSeconds, baseMetres, fastestCameras, baseSeconds, baseMetres, null);
+		plugin.setLastAvoidanceOutcome(outcome);
 		return baseline;
 	}
 

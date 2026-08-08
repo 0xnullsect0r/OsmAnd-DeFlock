@@ -45,6 +45,15 @@
     <string name="alpr_detour_budget_description">The most extra travel time you will accept to stay out of camera view. If avoiding every camera costs more than this, the route lets some cameras through, starting with the ones on the fastest roads.</string>
     <string name="alpr_detour_budget_value">Up to %1$s extra</string>
     <string name="alpr_avoidance_uses_standard_routing">Camera avoidance uses standard routing, so calculating a long route takes longer than usual.</string>
+    <string name="alpr_avoidance_margin">Keep away from cameras</string>
+    <string name="alpr_avoidance_margin_description">How close a route may come to a camera, in any direction. Detection range only covers where a camera is recorded as facing; this keeps you clear of it even if the direction is wrong or it has been re-aimed. Larger values mean longer detours.</string>
+    <string name="alpr_avoidance_margin_value">Stay %1$s clear</string>
+    <string name="alpr_avoidance_margin_off">Off — only avoid the mapped field of view</string>
+    <string name="alpr_route_comparison">This route vs the fastest</string>
+    <string name="alpr_route_fastest">Fastest</string>
+    <string name="alpr_route_camera_free">Avoiding cameras</string>
+    <string name="alpr_route_summary">%1$s · %2$s · %3$d cameras</string>
+    <string name="alpr_route_comparison_delta">%1$s and %2$s to stay out of camera view</string>
     <string name="alpr_cameras_in_view">%1$d ALPR cameras in view</string>
     <string name="alpr_no_cameras_in_view">No ALPR cameras in view</string>
     <string name="alpr_detour_added">+%1$s detour</string>

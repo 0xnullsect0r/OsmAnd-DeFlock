@@ -22,6 +22,17 @@ public class CameraCoverage {
 	/** Default full cone angle in degrees (so +/- 30 degrees around the facing). */
 	public static final double DEFAULT_CONE_DEG = 60;
 
+	/**
+	 * Default keep-away radius used when routing, in metres.
+	 *
+	 * <p>Separate from the detection model on purpose. {@link #DEFAULT_RANGE_M} is an estimate of
+	 * what a camera can read; this is how close you are willing to drive to one. A `direction` tag
+	 * can be wrong, cameras get re-aimed without anyone editing OSM, and passing directly behind
+	 * one is still passing it - so avoidance treats a camera as something to stay away from in
+	 * every direction, not only a cone to stay out of.
+	 */
+	public static final double DEFAULT_AVOIDANCE_MARGIN_M = 150;
+
 	/** Sampling resolution when walking along a road segment, in metres. */
 	private static final double SAMPLE_STEP_M = 4;
 
@@ -36,11 +47,30 @@ public class CameraCoverage {
 	 */
 	public static boolean covers(AlprCameraPoint camera, double lat, double lon,
 	                             double rangeM, double coneDeg) {
+		return covers(camera, lat, lon, rangeM, coneDeg, 0);
+	}
+
+	/**
+	 * As {@link #covers}, plus a keep-away radius.
+	 *
+	 * <p>With {@code marginM > 0} a location counts as covered when it is within {@code marginM}
+	 * of the camera <em>in any direction</em>, or inside the facing cone extended to
+	 * {@code rangeM + marginM}. The circle is the part that matters: it is what stops a route
+	 * being sent along the road immediately behind a camera on the strength of a direction tag
+	 * nobody has checked.
+	 *
+	 * @param marginM keep-away radius in metres; 0 gives exactly the detection model
+	 */
+	public static boolean covers(AlprCameraPoint camera, double lat, double lon,
+	                             double rangeM, double coneDeg, double marginM) {
 		if (camera == null) {
 			return false;
 		}
 		double dist = MapUtils.getDistance(camera.getLatitude(), camera.getLongitude(), lat, lon);
-		if (dist > rangeM) {
+		if (marginM > 0 && dist <= marginM) {
+			return true;
+		}
+		if (dist > rangeM + Math.max(0, marginM)) {
 			return false;
 		}
 		// A camera with no mapped facing could be pointing anywhere, so treat it as omnidirectional
@@ -63,19 +93,34 @@ public class CameraCoverage {
 	public static boolean coversSegment(AlprCameraPoint camera,
 	                                    double lat1, double lon1, double lat2, double lon2,
 	                                    double rangeM, double coneDeg) {
+		return coversSegment(camera, lat1, lon1, lat2, lon2, rangeM, coneDeg, 0);
+	}
+
+	/**
+	 * As {@link #coversSegment}, plus a keep-away radius. See
+	 * {@link #covers(AlprCameraPoint, double, double, double, double, double)}.
+	 */
+	public static boolean coversSegment(AlprCameraPoint camera,
+	                                    double lat1, double lon1, double lat2, double lon2,
+	                                    double rangeM, double coneDeg, double marginM) {
 		if (camera == null) {
 			return false;
 		}
 		double camLat = camera.getLatitude();
 		double camLon = camera.getLongitude();
+		// Everything below works against the outer reach, so the cheap rejects and the sampled
+		// stretch both account for the margin.
+		double reachM = rangeM + Math.max(0, marginM);
 
 		// Cheap reject: if even the closest point of the segment is out of range, so is all of it.
 		LatLon projection = MapUtils.getProjection(camLat, camLon, lat1, lon1, lat2, lon2);
 		double orthogonal = MapUtils.getDistance(projection, camLat, camLon);
-		if (orthogonal > rangeM) {
+		if (orthogonal > reachM) {
 			return false;
 		}
-		if (covers(camera, projection.getLatitude(), projection.getLongitude(), rangeM, coneDeg)) {
+		// The nearest point of the segment is the one most likely to be inside a keep-away circle,
+		// so this also short-circuits the common margin case.
+		if (covers(camera, projection.getLatitude(), projection.getLongitude(), rangeM, coneDeg, marginM)) {
 			return true;
 		}
 		// The closest point may sit outside the cone while part of the segment is inside it, so
@@ -83,9 +128,9 @@ public class CameraCoverage {
 		// regardless of how long the road segment is.
 		double segLen = MapUtils.getDistance(lat1, lon1, lat2, lon2);
 		if (segLen < 0.5) {
-			return covers(camera, lat1, lon1, rangeM, coneDeg);
+			return covers(camera, lat1, lon1, rangeM, coneDeg, marginM);
 		}
-		double halfChord = Math.sqrt(Math.max(0, rangeM * rangeM - orthogonal * orthogonal));
+		double halfChord = Math.sqrt(Math.max(0, reachM * reachM - orthogonal * orthogonal));
 		double tCenter = MapUtils.getProjectionCoeff(camLat, camLon, lat1, lon1, lat2, lon2);
 		double tLow = Math.max(0, tCenter - halfChord / segLen);
 		double tHigh = Math.min(1, tCenter + halfChord / segLen);
@@ -98,7 +143,7 @@ public class CameraCoverage {
 			double t = tLow + (tHigh - tLow) * i / samples;
 			double lat = lat1 + (lat2 - lat1) * t;
 			double lon = lon1 + (lon2 - lon1) * t;
-			if (covers(camera, lat, lon, rangeM, coneDeg)) {
+			if (covers(camera, lat, lon, rangeM, coneDeg, marginM)) {
 				return true;
 			}
 		}

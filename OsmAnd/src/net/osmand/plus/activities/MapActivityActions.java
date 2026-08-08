@@ -459,18 +459,22 @@ public class MapActivityActions extends MapActions {
 					R.drawable.ic_action_folder_osm_notes, DRAWER_OSM_EDITS_ID);
 		}
 
-		adapter.addItem(new ContextMenuItem(DRAWER_BACKUP_RESTORE_ID)
-				.setTitleId(R.string.backup_and_restore, activity)
-				.setIcon(R.drawable.ic_action_cloud_upload)
-				.setListener((uiAdapter, view, item, isChecked) -> {
-					app.logEvent("drawer_backup_restore_open");
-					if (app.getBackupHelper().isRegistered()) {
-						BackupCloudFragment.showInstance(activity.getSupportFragmentManager());
-					} else {
-						BackupAuthorizationFragment.showInstance(activity.getSupportFragmentManager());
-					}
-					return true;
-				}));
+		// OsmAnd Cloud is validated on OsmAnd's servers and is not reachable from this fork, so the
+		// drawer does not offer it. Local backup lives in Settings and is unaffected.
+		if (!Version.isUnlockedFork(app)) {
+			adapter.addItem(new ContextMenuItem(DRAWER_BACKUP_RESTORE_ID)
+					.setTitleId(R.string.backup_and_restore, activity)
+					.setIcon(R.drawable.ic_action_cloud_upload)
+					.setListener((uiAdapter, view, item, isChecked) -> {
+						app.logEvent("drawer_backup_restore_open");
+						if (app.getBackupHelper().isRegistered()) {
+							BackupCloudFragment.showInstance(activity.getSupportFragmentManager());
+						} else {
+							BackupAuthorizationFragment.showInstance(activity.getSupportFragmentManager());
+						}
+						return true;
+					}));
+		}
 
 		adapter.addItem(new ContextMenuItem(DRAWER_SEARCH_ID)
 				.setTitleId(R.string.search_button, activity)

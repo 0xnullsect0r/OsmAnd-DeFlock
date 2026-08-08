@@ -23,6 +23,7 @@ import androidx.fragment.app.FragmentManager;
 
 import net.osmand.PlatformUtil;
 import net.osmand.plus.R;
+import net.osmand.plus.OsmandApplication;
 import net.osmand.plus.Version;
 import net.osmand.plus.chooseplan.button.OneTimePaymentButton;
 import net.osmand.plus.chooseplan.button.PriceButton;
@@ -351,7 +352,19 @@ public class ChoosePlanFragment extends BasePurchaseDialogFragment implements Ca
 		showInstance(activity, OsmAndFeature.UNLIMITED_MAP_DOWNLOADS);
 	}
 
+	/**
+	 * The single entry point for every "buy this to unlock it" dialog in the app - some 45 call
+	 * sites reach the purchase flow through here.
+	 *
+	 * <p>Which makes it the one place worth guarding. This fork sells nothing and cannot take a
+	 * payment, so the dialog has nothing to offer; suppressing it here removes every prompt at
+	 * once, without editing 45 call sites or having to re-find them after a rebase.
+	 */
 	public static void showInstance(@NonNull FragmentActivity activity, @NonNull OsmAndFeature selectedFeature) {
+		OsmandApplication app = (OsmandApplication) activity.getApplication();
+		if (Version.isUnlockedFork(app)) {
+			return;
+		}
 		FragmentManager fragmentManager = activity.getSupportFragmentManager();
 		if (AndroidUtils.isFragmentCanBeAdded(fragmentManager, TAG)) {
 			ChoosePlanFragment fragment = new ChoosePlanFragment();

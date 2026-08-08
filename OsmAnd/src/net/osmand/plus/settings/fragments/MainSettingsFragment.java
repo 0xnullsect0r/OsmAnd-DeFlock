@@ -20,6 +20,7 @@ import androidx.preference.PreferenceCategory;
 import androidx.preference.PreferenceViewHolder;
 
 import net.osmand.plus.R;
+import net.osmand.plus.Version;
 import net.osmand.plus.activities.MapActivity;
 import net.osmand.plus.backup.ui.BackupAuthorizationFragment;
 import net.osmand.plus.backup.ui.BackupCloudFragment;
@@ -70,9 +71,18 @@ public class MainSettingsFragment extends BaseSettingsFragment implements OnSele
 		availableAppModes = new LinkedHashSet<>(ApplicationMode.values(app));
 		Preference globalSettings = requirePreference("global_settings");
 		globalSettings.setIcon(getContentIcon(R.drawable.ic_action_settings));
-		setupBackupAndRestorePref();
+		// This fork sells nothing and does not reach OsmAnd Cloud, so neither row leads anywhere:
+		// the storefront cannot take a payment and cloud backup is validated on OsmAnd's servers.
+		// Local backup - export and import to a file - is untouched and still set up below.
+		Preference backupAndRestore = requirePreference(BACKUP_AND_RESTORE);
 		Preference purchasesSettings = requirePreference(PURCHASES_SETTINGS);
-		purchasesSettings.setIcon(getContentIcon(R.drawable.ic_action_purchases));
+		if (Version.isUnlockedFork(app)) {
+			backupAndRestore.setVisible(false);
+			purchasesSettings.setVisible(false);
+		} else {
+			setupBackupAndRestorePref();
+			purchasesSettings.setIcon(getContentIcon(R.drawable.ic_action_purchases));
+		}
 		PreferenceCategory selectedProfile = requirePreference(SELECTED_PROFILE);
 		selectedProfile.setIconSpaceReserved(false);
 		setupConfigureProfilePref();

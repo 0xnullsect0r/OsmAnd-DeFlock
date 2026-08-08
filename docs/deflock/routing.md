@@ -74,16 +74,34 @@ In `RouteProvider.findVectorMapsRouteAvoidingCameras`:
 yardstick the detour is measured against, and its `RoutingContext` already has the map tiles
 loaded that the camera-to-road lookup needs.
 
-**2. Collect cameras.** `AlprAvoidanceHelper.getCorridorCameras` takes the bounding box of
-start, intermediates and end, expanded by `max(2 km, 10% of the straight-line distance)` —
-wide enough to contain a detour, not just the direct line. Capped at 4000 cameras. Missing
-tiles are downloaded synchronously, because routing off a half-loaded cache would tell the
-user their route avoids cameras when it does not.
+**2. Collect cameras.** A bounding box around start, intermediates and end is only the first,
+cheap pass — it is what the region index can answer. The set is then narrowed by
+`AlprRouteCorridor.select` to cameras within `range + margin + 1.5 km` **of the baseline route
+polyline**, ordered by distance to it, and only then capped.
+
+> **Why not just the bounding box.** It used to be the bounding box alone, capped at 4000
+> cameras — and that shipped a bug worth remembering. A box around a 200 km trip spans 240 km,
+> a downloaded region can hold far more than 4000 cameras (a North Carolina-sized box holds
+> 9,209), and cameras arrive sorted by OSM id because that is how `AlprRegionFile` writes them.
+> So the cap kept the 4000 *oldest* cameras in the region — a geographically arbitrary set that
+> usually excluded every camera along the road being planned. Avoidance silently did nothing,
+> and it got worse the more data you downloaded. Ordering by distance to the route means that
+> if the cap ever bites, it drops the cameras furthest from where you are driving.
 
 **3. Resolve roads.** For each camera, `AlprRoadExclusionResolver` loads a zoom-17 tile of road
 data around it (the same `RoutingContext.loadTileData` call `findRouteSegment` uses) and tests
 every polyline segment with `CameraCoverage.coversSegment`. Each watched road is recorded with
 its `highway` class, which the relaxation ladder needs.
+
+This is one tile load per camera, which is the other reason step 2 matters: a few hundred
+cameras near the route instead of thousands scattered across a region.
+
+Roads are tested against the detection cone **plus a keep-away radius**
+(`ALPR_AVOIDANCE_MARGIN_M`, 150 m by default). A road is excluded if it enters the cone extended
+to `range + margin`, or comes within `margin` of the camera *in any direction*. The circle is
+the point: `direction` can be wrong, cameras get re-aimed without anyone editing OSM, and the
+road immediately behind a camera is a poor place to rely on a tag. Setting the margin to 0
+reproduces the pure detection model exactly.
 
 **4. Avoiding route.** Same calculation with those ids excluded and HH disabled. If
 `routingTime - baselineTime <= budget`, done.
@@ -107,8 +125,21 @@ Three rounds bounds the work at five route calculations worst case.
 **6. Fall back honestly.** If nothing fits, the user gets the plain fastest route and the UI
 reports how many cameras can see it. It never silently returns an unavoided route.
 
-The outcome — cameras avoided, cameras still in view, actual detour seconds — is stored on the
-plugin and shown under the route option.
+**7. Check the route that came back.** Excluding roads is an instruction to the router, not a
+result. `AlprRouteCorridor.countWatching` walks the route actually produced and counts the
+cameras that can see it, and *that* is the number the UI reports.
+
+This matters more than it looks. The old code reported "no ALPR cameras in view" whenever it
+had excluded something and the router returned a route — it never checked. That is a claim this
+tool should never make on trust: the exclusion set can be incomplete, and a detour can be routed
+straight past a camera that was never in it. Now the count comes from measuring the road the
+user is about to drive.
+
+The outcome — cameras avoided, cameras still in view (verified), detour seconds, and both
+routes' time and distance — is stored on the plugin, shown under the route option, and expanded
+in the avoidance sheet, where the fastest route is listed beside the one taken. The fastest
+route's geometry is kept too, and `AlprCameraLayer` draws it as a dimmed dashed line so it is
+visible where the two diverge.
 
 ## Passing exclusions to the router
 

@@ -8,6 +8,8 @@ import android.graphics.Canvas;
 import android.graphics.Paint;
 import android.graphics.PointF;
 import android.graphics.PorterDuff;
+import android.graphics.DashPathEffect;
+import android.graphics.Path;
 import android.graphics.PorterDuffColorFilter;
 import android.graphics.Rect;
 import android.graphics.drawable.Drawable;
@@ -31,6 +33,7 @@ import net.osmand.data.PointDescription;
 import net.osmand.data.QuadRect;
 import net.osmand.data.RotatedTileBox;
 import net.osmand.plus.R;
+import net.osmand.plus.settings.backend.ApplicationMode;
 import net.osmand.plus.utils.AndroidUtils;
 import net.osmand.plus.utils.NativeUtilities;
 import net.osmand.plus.views.OsmandMapTileView;
@@ -67,6 +70,12 @@ public class AlprCameraLayer extends OsmandMapLayer implements ContextMenuLayer.
 	/** Opacity of the circle drawn for a camera whose facing is not mapped. */
 	private static final int OMNIDIRECTIONAL_ALPHA = 70;
 
+	/** Opacity of the keep-away outline; faint enough to read the map through a cluster of them. */
+	private static final int HALO_ALPHA = 90;
+
+	private static final int GHOST_ALPHA = 150;
+	private static final float GHOST_WIDTH_DP = 3f;
+
 	/**
 	 * The cone drawable is 96 units across with its apex at the centre and the arc at 44 units,
 	 * so a bitmap drawn {@code radius * CONE_BITMAP_SCALE} wide reaches exactly {@code radius}.
@@ -83,6 +92,8 @@ public class AlprCameraLayer extends OsmandMapLayer implements ContextMenuLayer.
 	private Paint iconPaint;
 	private Paint conePaint;
 	private Paint circlePaint;
+	private Paint haloPaint;
+	private Paint ghostPaint;
 
 	// OpenGL: remembers what the marker collection was built from, so it is rebuilt only on change.
 	private int renderedCameraCount = -1;
@@ -139,6 +150,24 @@ public class AlprCameraLayer extends OsmandMapLayer implements ContextMenuLayer.
 		circlePaint.setStyle(Paint.Style.FILL);
 		circlePaint.setColor(color);
 		circlePaint.setAlpha(OMNIDIRECTIONAL_ALPHA);
+		// Outline only: the keep-away radius is usually much wider than the cone, and filling it
+		// would bury the map under overlapping discs in any built-up area.
+		haloPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+		haloPaint.setStyle(Paint.Style.STROKE);
+		haloPaint.setStrokeWidth(AndroidUtils.dpToPx(getContext(), 1f));
+		haloPaint.setColor(color);
+		haloPaint.setAlpha(HALO_ALPHA);
+		// The route not taken: dashed and dimmed so it reads as a reference, never as the route
+		// being navigated.
+		ghostPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+		ghostPaint.setStyle(Paint.Style.STROKE);
+		ghostPaint.setStrokeWidth(AndroidUtils.dpToPx(getContext(), GHOST_WIDTH_DP));
+		ghostPaint.setStrokeCap(Paint.Cap.ROUND);
+		ghostPaint.setStrokeJoin(Paint.Join.ROUND);
+		ghostPaint.setColor(ContextCompat.getColor(getContext(), R.color.deflock_ghost_route_color));
+		ghostPaint.setAlpha(GHOST_ALPHA);
+		float dash = AndroidUtils.dpToPx(getContext(), 6f);
+		ghostPaint.setPathEffect(new DashPathEffect(new float[] {dash, dash}, 0));
 	}
 
 	@Nullable
@@ -191,6 +220,12 @@ public class AlprCameraLayer extends OsmandMapLayer implements ContextMenuLayer.
 		float range = plugin.ALPR_VIEW_RANGE_M.get();
 		float cone = plugin.ALPR_VIEW_CONE_DEG.get();
 
+		// Drawn on canvas in both rendering modes: what the router is actually keeping away from,
+		// and the route it gave up to do it. Both are about the routing decision rather than the
+		// cameras themselves, so they sit outside the OpenGL marker path below.
+		drawKeepAwayHalos(canvas, tileBox, cameras);
+		drawFastestRouteGhost(canvas, tileBox);
+
 		MapRendererView mapRenderer = getMapRenderer();
 		if (mapRenderer != null) {
 			if (renderedCameraCount != cameras.size() || renderedRange != range
@@ -208,6 +243,77 @@ public class AlprCameraLayer extends OsmandMapLayer implements ContextMenuLayer.
 		if (tileBox.getZoom() >= START_ZOOM_ICONS) {
 			drawIcons(canvas, tileBox, cameras);
 		}
+	}
+
+	/**
+	 * Draws the keep-away radius the router is honouring, when avoidance is on for the current
+	 * profile.
+	 *
+	 * <p>The cone says what a camera is recorded as seeing; this says how much road the setting is
+	 * actually taking away. Those are different areas, and a detour is much easier to accept once
+	 * you can see which one caused it.
+	 */
+	private void drawKeepAwayHalos(@NonNull Canvas canvas, @NonNull RotatedTileBox tileBox,
+	                               @NonNull List<AlprCameraPoint> cameras) {
+		ApplicationMode mode = getApplication().getSettings().getApplicationMode();
+		if (!plugin.isAvoidanceEnabled(mode)) {
+			return;
+		}
+		float marginM = plugin.ALPR_AVOIDANCE_MARGIN_M.getModeValue(mode);
+		if (marginM <= 0) {
+			return;
+		}
+		float radiusPx = metresToPixels(tileBox, marginM);
+		if (radiusPx < 2) {
+			return;
+		}
+		canvas.save();
+		canvas.rotate(tileBox.getRotate(), tileBox.getCenterPixelX(), tileBox.getCenterPixelY());
+		for (AlprCameraPoint camera : cameras) {
+			float x = tileBox.getPixXFromLonNoRot(camera.getLongitude());
+			float y = tileBox.getPixYFromLatNoRot(camera.getLatitude());
+			canvas.drawCircle(x, y, radiusPx, haloPaint);
+		}
+		canvas.restore();
+	}
+
+	/**
+	 * Draws the fastest route as a dashed ghost, beside the route avoidance actually produced.
+	 *
+	 * <p>Two numbers in a sheet say the detour cost four minutes; seeing where the lines part says
+	 * what those four minutes bought.
+	 */
+	private void drawFastestRouteGhost(@NonNull Canvas canvas, @NonNull RotatedTileBox tileBox) {
+		AlprAvoidanceHelper.Outcome outcome = plugin.getLastAvoidanceOutcome();
+		if (outcome == null || !outcome.hasComparison()) {
+			return;
+		}
+		List<LatLon> path = outcome.getFastestPath();
+		if (path == null || path.size() < 2) {
+			return;
+		}
+		QuadRect visible = tileBox.getLatLonBounds();
+		Path line = new Path();
+		boolean started = false;
+		boolean anyVisible = false;
+		canvas.save();
+		canvas.rotate(tileBox.getRotate(), tileBox.getCenterPixelX(), tileBox.getCenterPixelY());
+		for (LatLon point : path) {
+			float x = tileBox.getPixXFromLonNoRot(point.getLongitude());
+			float y = tileBox.getPixYFromLatNoRot(point.getLatitude());
+			if (!started) {
+				line.moveTo(x, y);
+				started = true;
+			} else {
+				line.lineTo(x, y);
+			}
+			anyVisible |= visible.contains(point.getLongitude(), point.getLatitude(),
+					point.getLongitude(), point.getLatitude());
+		}
+		if (anyVisible) {
+			canvas.drawPath(line, ghostPaint);
+		}
+		canvas.restore();
 	}
 
 	/**

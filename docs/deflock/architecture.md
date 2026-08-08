@@ -94,7 +94,7 @@ The feature is deliberately split across two modules:
 
 | Module | Holds | Why |
 |---|---|---|
-| `OsmAnd-java` (`net.osmand.router.deflock`) | camera model, cone geometry, road resolution, relaxation | pure Java, no Android — unit testable on the JVM, and reachable from router code |
+| `OsmAnd-java` (`net.osmand.router.deflock`) | camera model, cone geometry, road resolution, relaxation, route-corridor selection | pure Java, no Android — unit testable on the JVM, and reachable from router code |
 | `OsmAnd` (`net.osmand.plus.plugins.deflock`) | networking, SQLite cache, map layer, plugin, UI | needs Android APIs |
 
 ## Data flow
@@ -260,6 +260,7 @@ Configure-map toggle, and the last avoidance outcome for the UI to report.
 | `OsmAnd-java/src/main/java/net/osmand/router/deflock/AlprCameraPoint.java` | camera model, direction parsing |
 | `OsmAnd-java/src/main/java/net/osmand/router/deflock/CameraCoverage.java` | view sector geometry |
 | `OsmAnd-java/src/main/java/net/osmand/router/deflock/AlprRoadExclusionResolver.java` | cameras → road ids, relaxation ladder |
+| `OsmAnd-java/…/router/deflock/AlprRouteCorridor.java` | cameras near a route, and checking a finished route against them |
 | `OsmAnd-java/…/router/deflock/AlprRegionKey.java` | map file name ↔ region key ↔ data file name |
 | `OsmAnd-java/…/router/deflock/AlprCoverageIndex.java` | FULL/PARTIAL/NONE coverage for an area |
 | `OsmAnd/…/plugins/deflock/AlprRegionFile.java` | region file read/write, GeoJSON import |

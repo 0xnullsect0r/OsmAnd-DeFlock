@@ -38,6 +38,7 @@ public class DeFlockPlugin extends OsmandPlugin {
 	public final CommonPreference<Boolean> SHOW_ALPR_CAMERAS;
 	public final CommonPreference<Float> ALPR_VIEW_RANGE_M;
 	public final CommonPreference<Float> ALPR_VIEW_CONE_DEG;
+	public final CommonPreference<Float> ALPR_AVOIDANCE_MARGIN_M;
 	public final CommonPreference<Boolean> AVOID_ALPR_CAMERAS;
 	public final CommonPreference<Integer> ALPR_DETOUR_BUDGET_MIN;
 	public final CommonPreference<String> OVERPASS_ENDPOINT;
@@ -55,6 +56,8 @@ public class DeFlockPlugin extends OsmandPlugin {
 				(float) CameraCoverage.DEFAULT_RANGE_M).makeProfile().cache();
 		ALPR_VIEW_CONE_DEG = registerFloatPreference("alpr_view_cone_deg",
 				(float) CameraCoverage.DEFAULT_CONE_DEG).makeProfile().cache();
+		ALPR_AVOIDANCE_MARGIN_M = registerFloatPreference("alpr_avoidance_margin_m",
+				(float) CameraCoverage.DEFAULT_AVOIDANCE_MARGIN_M).makeProfile().cache();
 		AVOID_ALPR_CAMERAS = registerBooleanPreference("avoid_alpr_cameras", false).makeProfile().cache();
 		ALPR_DETOUR_BUDGET_MIN = registerIntPreference("alpr_detour_budget_min",
 				DEFAULT_DETOUR_BUDGET_MIN).makeProfile().cache();

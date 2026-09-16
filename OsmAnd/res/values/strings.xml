@@ -58,6 +58,11 @@
     <string name="alpr_no_cameras_in_view">No ALPR cameras in view</string>
     <string name="alpr_detour_added">+%1$s detour</string>
     <string name="alpr_cached_cameras">%1$d cameras cached</string>
+    <string name="alpr_auto_download_with_maps">Download with offline maps</string>
+    <string name="alpr_auto_download_with_maps_description">When you download an offline map, fetch that region\'s ALPR cameras in the background too, so you do not have to start it by hand.</string>
+    <string name="alpr_auto_download_started">Downloading ALPR cameras for %1$s in the background</string>
+    <string name="alpr_auto_download_done">%1$s: %2$d ALPR cameras ready offline</string>
+    <string name="alpr_auto_download_failed">Could not download ALPR cameras for %1$s. Open the plugin settings to retry.</string>
     <string name="alpr_clear_cache">Clear downloaded cameras</string>
     <string name="alpr_clear_cache_description">Removes the offline copy. Areas you visit will be downloaded again.</string>
     <string name="alpr_camera_direction">Faces %1$s</string>

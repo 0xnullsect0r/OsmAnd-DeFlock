@@ -6,6 +6,10 @@ import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 
 import net.osmand.aidlapi.OsmAndCustomizationConstants;
+import net.osmand.map.WorldRegion;
+import net.osmand.plus.download.IndexItem;
+import net.osmand.router.deflock.AlprRegionKey;
+import net.osmand.util.Algorithms;
 import net.osmand.plus.OsmandApplication;
 import net.osmand.plus.R;
 import net.osmand.plus.activities.MapActivity;
@@ -20,7 +24,10 @@ import net.osmand.plus.widgets.ctxmenu.callback.ItemClickListener;
 import net.osmand.plus.widgets.ctxmenu.data.ContextMenuItem;
 import net.osmand.router.deflock.CameraCoverage;
 
+import java.util.Collections;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 /**
  * Shows automated license plate reader (ALPR) cameras from the DeFlock project on the map, and
@@ -42,6 +49,8 @@ public class DeFlockPlugin extends OsmandPlugin {
 	public final CommonPreference<Boolean> AVOID_ALPR_CAMERAS;
 	public final CommonPreference<Integer> ALPR_DETOUR_BUDGET_MIN;
 	public final CommonPreference<String> OVERPASS_ENDPOINT;
+	/** Fetch a region's cameras automatically when its offline map is downloaded. */
+	public final CommonPreference<Boolean> AUTO_DOWNLOAD_WITH_MAPS;
 
 	private final AlprCameraRepository cameraRepository;
 	private AlprCameraLayer cameraLayer;
@@ -63,6 +72,8 @@ public class DeFlockPlugin extends OsmandPlugin {
 				DEFAULT_DETOUR_BUDGET_MIN).makeProfile().cache();
 		OVERPASS_ENDPOINT = registerStringPreference("alpr_overpass_endpoint",
 				OverpassAlprClient.DEFAULT_ENDPOINT).makeGlobal().makeShared();
+		AUTO_DOWNLOAD_WITH_MAPS = registerBooleanPreference("alpr_auto_download_with_maps", true)
+				.makeGlobal().makeShared();
 
 		cameraRepository = new AlprCameraRepository(app);
 		cameraRepository.setEndpoint(OVERPASS_ENDPOINT.get());
@@ -136,6 +147,78 @@ public class DeFlockPlugin extends OsmandPlugin {
 	@Nullable
 	public AlprAvoidanceHelper.Outcome getLastAvoidanceOutcome() {
 		return lastAvoidanceOutcome;
+	}
+
+	// Regions whose camera download this plugin started itself, so only those are reported back.
+	private final Set<String> autoStartedRegions = Collections.synchronizedSet(new HashSet<>());
+	private AlprRegionManager.StatusListener autoDownloadListener;
+
+	/**
+	 * Pulls a region's ALPR cameras down as soon as its offline map finishes downloading.
+	 *
+	 * <p>Camera data is fetched cell by cell from Overpass and takes minutes for a large region,
+	 * which is intolerable to sit and watch. Piggybacking on the map download means the data is
+	 * simply there when the map is, and the work happens on the region manager's own executor.
+	 */
+	@Override
+	public void onIndexItemDownloaded(@NonNull IndexItem item, boolean updatingFile) {
+		if (!isActive() || !AUTO_DOWNLOAD_WITH_MAPS.get()) {
+			return;
+		}
+		// Null for anything that is not a routable map - srtm, wiki, travel, depth, voice prompts -
+		// because those cover ground that a separately listed map already accounts for.
+		String regionKey = AlprRegionKey.fromMapFileName(item.getTargetFileName());
+		if (regionKey == null) {
+			return;
+		}
+		AlprRegionManager manager = cameraRepository.getRegionManager();
+		// Updating a map should not silently redo a download that already succeeded. Refreshing
+		// existing camera data stays a deliberate action, offered in the plugin's own screen.
+		if (updatingFile && manager.getRegionFile(regionKey).exists()) {
+			return;
+		}
+		ensureAutoDownloadReporting(manager);
+		// Announce once per batch: downloading a continent queues many maps, and one toast per
+		// region would bury the screen.
+		if (autoStartedRegions.isEmpty()) {
+			app.showToastMessage(app.getString(R.string.alpr_auto_download_started, regionName(regionKey)));
+		}
+		autoStartedRegions.add(regionKey);
+		manager.downloadRegion(regionKey);
+	}
+
+	/**
+	 * Reports the outcome of downloads this plugin started. Without this the work would be wholly
+	 * invisible, which is the opposite failure to making the user watch a progress bar.
+	 */
+	private void ensureAutoDownloadReporting(@NonNull AlprRegionManager manager) {
+		if (autoDownloadListener != null) {
+			return;
+		}
+		autoDownloadListener = (regionKey, status) -> {
+			if (status.isRunning() || !autoStartedRegions.remove(regionKey)) {
+				return;
+			}
+			switch (status.getState()) {
+				case DONE -> app.showToastMessage(app.getString(R.string.alpr_auto_download_done,
+						regionName(regionKey), status.getCameras()));
+				case FAILED -> app.showToastMessage(app.getString(R.string.alpr_auto_download_failed,
+						regionName(regionKey)));
+				default -> {
+					// EMPTY or CANCELLED: nothing a driver needs interrupting for.
+				}
+			}
+		};
+		manager.addStatusListener(autoDownloadListener);
+	}
+
+	@NonNull
+	private String regionName(@NonNull String regionKey) {
+		WorldRegion region = app.getRegions().getRegionDataByDownloadName(regionKey);
+		if (region != null && !Algorithms.isEmpty(region.getLocaleName())) {
+			return region.getLocaleName();
+		}
+		return regionKey;
 	}
 
 	@Override

@@ -9,6 +9,7 @@ import net.osmand.plus.plugins.PluginsHelper;
 import net.osmand.plus.settings.fragments.BaseSettingsFragment;
 import net.osmand.plus.settings.fragments.SettingsScreenType;
 import net.osmand.plus.settings.preferences.ListPreferenceEx;
+import net.osmand.plus.settings.preferences.SwitchPreferenceEx;
 import net.osmand.plus.utils.AndroidUtils;
 
 public class DeFlockSettingsFragment extends BaseSettingsFragment {
@@ -26,6 +27,7 @@ public class DeFlockSettingsFragment extends BaseSettingsFragment {
 		setupAvoidCameras();
 		setupDetourBudget();
 		setupOfflineData();
+		setupAutoDownload();
 		setupClearCache();
 		loadSummariesAsync();
 	}
@@ -34,6 +36,14 @@ public class DeFlockSettingsFragment extends BaseSettingsFragment {
 		SwitchPreferenceCompat preference = findPreference(plugin.SHOW_ALPR_CAMERAS.getId());
 		if (preference != null) {
 			preference.setIcon(getPersistentPrefIcon(R.drawable.ic_alpr_camera));
+		}
+	}
+
+	private void setupAutoDownload() {
+		SwitchPreferenceEx preference = findPreference(plugin.AUTO_DOWNLOAD_WITH_MAPS.getId());
+		if (preference != null) {
+			preference.setIcon(getActiveIcon(R.drawable.ic_action_import));
+			preference.setDescription(R.string.alpr_auto_download_with_maps_description);
 		}
 	}
 

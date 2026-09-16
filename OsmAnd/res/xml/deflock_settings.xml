@@ -57,6 +57,13 @@
         android:layout="@layout/preference_category_with_descr"
         android:title="@string/shared_string_download" />
 
+    <net.osmand.plus.settings.preferences.SwitchPreferenceEx
+        android:key="alpr_auto_download_with_maps"
+        android:layout="@layout/preference_with_descr_dialog_and_switch"
+        android:summaryOff="@string/shared_string_disabled"
+        android:summaryOn="@string/shared_string_enabled"
+        android:title="@string/alpr_auto_download_with_maps" />
+
     <Preference
         android:key="alpr_clear_cache"
         android:layout="@layout/preference_with_descr"

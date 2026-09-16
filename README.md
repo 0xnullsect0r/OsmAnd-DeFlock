@@ -110,6 +110,32 @@ true for any app whose name contains a tilde, which is what makes the F-Droid bu
 This fork says the same thing explicitly through `Version.isUnlockedFork()`, so it keeps its own
 name. The source is GPLv3 and you compiled it yourself.
 
+---
+
+## Android Auto
+
+Android Auto works without a subscription, and feeds turn-by-turn data to a vehicle's
+instrument-cluster navigation page — the same channel Google Maps and onX Offroad use. That path
+was broken in three ways and is now repaired:
+
+- A single rejected trip update disabled further updates **permanently**, so the cluster froze
+  mid-drive, typically after the first reroute. It now re-arms and retries.
+- Trip updates were nested inside a check for the car screen, so no visible screen meant no cluster
+  data at all. They are now sent first and unconditionally.
+- A roundabout with an unmapped exit number threw and took the whole trip down, because the Car App
+  Library requires an exit number of at least 1 and OsmAnd emits 0 when it does not know.
+
+Rendering a full map to the cluster is also implemented (`FEATURE_CLUSTER`), but Android Auto
+projection generally does not offer a cluster display to third-party apps — expect the metadata
+path to be what appears on your dash.
+
+**If OsmAnd does not show up in the car, it is almost certainly not a bug.** Android Auto hides
+sideloaded apps until you enable *Unknown sources* in its developer settings. See
+[docs/deflock/android-auto.md](docs/deflock/android-auto.md) for the exact steps, the Desktop Head
+Unit setup, and what to check in logcat.
+
+Not tested on vehicle hardware.
+
 **It unlocks features, not services.** OsmAnd Cloud backup and sync are validated on OsmAnd's
 servers, so no change here could enable them — and rather than leave an unlocked-looking button
 that dead-ends at a login screen, the cloud UI is removed. There is nothing in this build
@@ -268,6 +294,7 @@ upstream OsmAnd.
 | [architecture.md](docs/deflock/architecture.md) | Components, data flow, every file the feature touches |
 | [routing.md](docs/deflock/routing.md) | How avoidance works and why it is built this way |
 | [building.md](docs/deflock/building.md) | Prerequisites, build and test commands, releases, pitfalls |
+| [android-auto.md](docs/deflock/android-auto.md) | Getting the build onto a head unit, and what feeds the instrument cluster |
 
 ---
 

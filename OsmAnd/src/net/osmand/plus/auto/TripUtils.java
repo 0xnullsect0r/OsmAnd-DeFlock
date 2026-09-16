@@ -98,7 +98,8 @@ public class TripUtils {
 		MetricsConstants mc = app.getSettings().METRIC_SYSTEM.get();
 		FormattedValue formattedValue = OsmAndFormatter.getFormattedDistanceValue((float) meters, app, USE_LOWER_BOUNDS, mc);
 
-		return Distance.create(formattedValue.valueSrc, getDistanceUnit(formattedValue.unitId));
+		return Distance.create(formattedValue.valueSrc,
+				getDistanceUnit(formattedValue.unitId, formattedValue.valueSrc));
 	}
 
 	@NonNull
@@ -106,11 +107,23 @@ public class TripUtils {
 		MetricsConstants mc = app.getSettings().METRIC_SYSTEM.get();
 		FormattedValue formattedValue = OsmAndFormatter.getFormattedDistanceValue((float) meters, app, DEFAULT, mc);
 
-		return Distance.create(formattedValue.valueSrc, getDistanceUnit(formattedValue.unitId));
+		return Distance.create(formattedValue.valueSrc,
+				getDistanceUnit(formattedValue.unitId, formattedValue.valueSrc));
 	}
 
+	/**
+	 * Picks the car unit to match the precision OsmAndFormatter actually used.
+	 *
+	 * <p>The {@code _P1} units tell the host to render one decimal place. OsmAndFormatter drops the
+	 * decimal once a distance reaches 100 units (see {@code getFormattedDistanceValue}), so asking
+	 * for {@code _P1} everywhere renders a spurious trailing zero - "230.0 mi" - on the instrument
+	 * cluster and head-up display, which is exactly where a long leg is read at a glance.
+	 *
+	 * @param value the formatted value, in {@code unitId} units
+	 */
 	@Distance.Unit
-	public static int getDistanceUnit(@StringRes int unitId) {
+	public static int getDistanceUnit(@StringRes int unitId, float value) {
+		boolean whole = Math.abs(value) >= 100f;
 		if (unitId == R.string.m) {
 			return Distance.UNIT_METERS;
 		} else if (unitId == R.string.yard) {
@@ -118,9 +131,11 @@ public class TripUtils {
 		} else if (unitId == R.string.foot) {
 			return Distance.UNIT_FEET;
 		} else if (unitId == R.string.mile || unitId == R.string.nm) {
-			return Distance.UNIT_MILES_P1;
+			// Note: the Car App Library has no nautical-mile unit, so a nautical distance is
+			// rendered with a statute-mile label. Harmless on land, wrong at sea.
+			return whole ? Distance.UNIT_MILES : Distance.UNIT_MILES_P1;
 		} else if (unitId == R.string.km) {
-			return Distance.UNIT_KILOMETERS_P1;
+			return whole ? Distance.UNIT_KILOMETERS : Distance.UNIT_KILOMETERS_P1;
 		}
 		return Distance.UNIT_METERS;
 	}
@@ -143,6 +158,36 @@ public class TripUtils {
 			case TurnType.RNLB -> Maneuver.TYPE_ROUNDABOUT_ENTER_AND_EXIT_CW; // Roundabout left
 			default -> Maneuver.TYPE_UNKNOWN;
 		};
+	}
+
+	/**
+	 * True when this turn is a roundabout AND carries an exit number the host will accept.
+	 *
+	 * <p>{@code Maneuver.Builder.build()} rejects an exit number below 1 with
+	 * "Maneuver must include a valid exit number", but OsmAnd emits 0 whenever the exit is unknown.
+	 * Passing that through throws and takes the entire Trip down, which freezes the cluster and the
+	 * turn card mid-roundabout.
+	 */
+	public static boolean hasValidRoundaboutExit(@NonNull TurnType turnType) {
+		return turnType.isRoundAbout() && turnType.getExitOut() >= 1;
+	}
+
+	/**
+	 * Like {@link #getManeuverType(TurnType)}, but degrades an ENTER_AND_EXIT roundabout to a plain
+	 * ENTER when no usable exit number is available. The ENTER types carry no exit number, so they
+	 * always validate.
+	 */
+	public static int getManeuverType(@NonNull TurnType turnType, boolean validRoundaboutExit) {
+		int type = getManeuverType(turnType);
+		if (!validRoundaboutExit) {
+			if (type == Maneuver.TYPE_ROUNDABOUT_ENTER_AND_EXIT_CCW) {
+				return Maneuver.TYPE_ROUNDABOUT_ENTER_CCW;
+			}
+			if (type == Maneuver.TYPE_ROUNDABOUT_ENTER_AND_EXIT_CW) {
+				return Maneuver.TYPE_ROUNDABOUT_ENTER_CW;
+			}
+		}
+		return type;
 	}
 
 	public static int getLaneDirection(@NonNull TurnType turnType) {

@@ -46,6 +46,8 @@ import net.osmand.plus.views.layers.base.OsmandMapLayer.DrawSettings;
  */
 public final class SurfaceRenderer implements DefaultLifecycleObserver, MapRendererViewListener, ElevationListener {
 	private static final String TAG = "SurfaceRenderer";
+	/** Frame rendering runs many times a second, so a persistent fault must not flood the log. */
+	private static final int MAX_LOGGED_RENDER_FAILURES = 3;
 
 	public static final float MIN_ALLOWED_ELEVATION_ANGLE_AA = 20;
 
@@ -53,6 +55,8 @@ public final class SurfaceRenderer implements DefaultLifecycleObserver, MapRende
 	private static final int MAP_RENDER_MESSAGE = OsmAndConstants.UI_HANDLER_MAP_VIEW + 7;
 	private static final int MAX_FRAME_RATE = 20;
 	public static final int PINCH_TO_ZOOM_ITERATION_DELAY = 200;
+
+	private int renderFailures;
 
 	private final CarContext carContext;
 	private final CarSurfaceView surfaceView;
@@ -496,8 +500,15 @@ public final class SurfaceRenderer implements DefaultLifecycleObserver, MapRende
 		RotatedTileBox tileBox = mapView.getRotatedTileBox();
 		try {
 			renderFrame(tileBox, drawSettings);
-		} catch (Exception ignored) {
-			// Ignored
+			renderFailures = 0;
+		} catch (Exception e) {
+			// Swallowing this silently made a blank car screen impossible to diagnose. Log it, but
+			// rate-limit: this runs up to MAX_FRAME_RATE times a second, so an unrecoverable fault
+			// would otherwise flood the log.
+			if (++renderFailures <= MAX_LOGGED_RENDER_FAILURES) {
+				Log.e(TAG, "Failed to render the car map frame"
+						+ (renderFailures == MAX_LOGGED_RENDER_FAILURES ? " (further errors suppressed)" : ""), e);
+			}
 		}
 	}
 

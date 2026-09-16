@@ -11,6 +11,7 @@ import android.os.Build;
 import androidx.annotation.NonNull;
 import androidx.car.app.CarAppService;
 import androidx.car.app.Session;
+import androidx.car.app.SessionInfo;
 import androidx.car.app.validation.HostValidator;
 import androidx.core.app.ActivityCompat;
 import androidx.lifecycle.DefaultLifecycleObserver;
@@ -71,6 +72,30 @@ public final class NavigationCarAppService extends CarAppService implements Acti
 	@Override
 	@NonNull
 	public Session onCreateSession() {
+		// Hosts below Car App API level 6 use this overload; they only ever have a main display.
+		return createMainSession();
+	}
+
+	/**
+	 * Multi-display entry point. The host calls this once per display, so a vehicle that exposes an
+	 * instrument cluster gets a second, separate session.
+	 */
+	@Override
+	@NonNull
+	public Session onCreateSession(@NonNull SessionInfo sessionInfo) {
+		// Logged deliberately: this line is the only reliable way to find out whether a given
+		// vehicle actually offers a cluster display to a projected Android Auto app.
+		LOG.info("Creating car session for displayType=" + sessionInfo.getDisplayType());
+		if (sessionInfo.getDisplayType() == SessionInfo.DISPLAY_TYPE_CLUSTER) {
+			return new ClusterSession();
+		}
+		return createMainSession();
+	}
+
+	@NonNull
+	private Session createMainSession() {
+		// The foreground service belongs to the main display. Tying it to the cluster session would
+		// tear the service down whenever the cluster display went away.
 		startForegroundWithPermission();
 		NavigationSession session = new NavigationSession();
 		session.getLifecycle()
@@ -108,8 +133,12 @@ public final class NavigationCarAppService extends CarAppService implements Acti
 
 	public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions, @NonNull int[] grantResults) {
 		List<String> permissionsList = Arrays.asList(permissions);
-		if (getApp().getCarNavigationSession() != null && permissionsList.contains(Manifest.permission.ACCESS_FINE_LOCATION) ||
-				permissionsList.contains(Manifest.permission.ACCESS_COARSE_LOCATION)) {
+		// && binds tighter than ||, so the original condition fired on a COARSE-only grant even with
+		// no session. startForegroundWithPermission() re-checks the permission itself and never
+		// touches the session, so the location grant is the only thing that matters here.
+		boolean locationGranted = permissionsList.contains(Manifest.permission.ACCESS_FINE_LOCATION)
+				|| permissionsList.contains(Manifest.permission.ACCESS_COARSE_LOCATION);
+		if (locationGranted) {
 			startForegroundWithPermission();
 		}
 	}

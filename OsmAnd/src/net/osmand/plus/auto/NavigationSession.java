@@ -24,6 +24,7 @@ import androidx.car.app.model.CarIcon;
 import androidx.car.app.navigation.NavigationManager;
 import androidx.car.app.navigation.NavigationManagerCallback;
 import androidx.car.app.navigation.model.Destination;
+import androidx.car.app.navigation.model.Step;
 import androidx.car.app.navigation.model.TravelEstimate;
 import androidx.car.app.navigation.model.Trip;
 import androidx.core.app.ActivityCompat;
@@ -130,6 +131,10 @@ public class NavigationSession extends Session implements NavigationListener, Os
 	private CarContext carContext;
 	private NavigationManager navigationManager;
 	private boolean carNavigationShouldBeActive; // it could set true before init navigationManager
+
+	/** Consecutive rejected trip updates tolerated before we stop trying. */
+	private static final int MAX_TRIP_UPDATE_FAILURES = 5;
+	private int tripUpdateFailures;
 	private TripHelper tripHelper;
 
 	private FastRoutingState.Status lastFastRoutingComplication = null;
@@ -224,7 +229,9 @@ public class NavigationSession extends Session implements NavigationListener, Os
 	public void onResume(@NonNull LifecycleOwner owner) {
 		if (routingHelper.isFollowingMode() && routingHelper.isRouteCalculated()) {
 			startNavigationScreen();
-//			updateCarNavigation(routingHelper.getLastFixedLocation());
+			// Refresh the trip on resume so the cluster and turn card are not left showing whatever
+			// state they held when the car screen was last backgrounded.
+			updateCarNavigation(getApp().getLocationProvider().getLastKnownLocation());
 		} else {
 			showRoutePreview();
 		}
@@ -708,52 +715,104 @@ public class NavigationSession extends Session implements NavigationListener, Os
 						}
 						carNavigationShouldBeActive = false;
 						navigationManager.navigationEnded();
+						getApp().setCarTripSnapshot(TripSnapshot.idle());
 					}
 				}
 		);
 	}
 
 	public void updateCarNavigation(Location currentLocation) {
-		OsmandApplication app = getApp();
 		TripHelper tripHelper = this.tripHelper;
-		if (carNavigationShouldBeActive && navigationManager != null && tripHelper != null
-				&& routingHelper.isRouteCalculated() && routingHelper.isFollowingMode()) {
-			NavigationSession carNavigationSession = app.getCarNavigationSession();
-			if (carNavigationSession != null) {
-				NavigationScreen navigationScreen = carNavigationSession.getNavigationScreen();
-				if (navigationScreen == null) {
-					carNavigationSession.startNavigationScreen();
-					navigationScreen = carNavigationSession.getNavigationScreen();
-				}
-				if (navigationScreen != null) {
-					float density = carNavigationSession.getNavigationCarSurface().getDensity();
-					if (density == 0) {
-						density = 1;
-					}
-					Trip trip = tripHelper.buildTrip(currentLocation, density);
-					if (carNavigationShouldBeActive) {
-						try {
-							navigationManager.updateTrip(trip);
-						} catch (IllegalStateException e) {
-							carNavigationShouldBeActive = false;
-							LOG.warn("NavigationManager is no longer in started state, stop sending trip updates", e);
-						}
-					}
+		NavigationManager navigationManager = this.navigationManager;
+		if (!carNavigationShouldBeActive || navigationManager == null || tripHelper == null
+				|| !routingHelper.isRouteCalculated() || !routingHelper.isFollowingMode()) {
+			return;
+		}
+		// The surface only exists once the car display hands us one. Trip metadata must not depend
+		// on it: the instrument cluster reads the metadata channel and has no surface of its own.
+		SurfaceRenderer surface = this.navigationCarSurface;
+		float density = surface != null && surface.getDensity() > 0 ? surface.getDensity() : 1f;
 
-					List<Destination> destinations = null;
-					Destination destination = tripHelper.getLastDestination();
-					TravelEstimate destinationTravelEstimate = tripHelper.getLastDestinationTravelEstimate();
-					if (destination != null) {
-						destinations = Collections.singletonList(destination);
-					}
-					TravelEstimate lastStepTravelEstimate = tripHelper.getLastStepTravelEstimate();
-					navigationScreen.updateTrip(true, routingHelper.isRouteBeingCalculated(),
-							false/*routingHelper.isRouteWasFinished()*/,
-							destinations, trip.getSteps(), destinationTravelEstimate,
-							lastStepTravelEstimate != null ? lastStepTravelEstimate.getRemainingDistance() : null,
-							true, true, null);
-				}
+		Trip trip;
+		try {
+			trip = tripHelper.buildTrip(currentLocation, density);
+		} catch (RuntimeException e) {
+			// A single malformed Trip must never take down the update loop.
+			LOG.error("Could not build the car Trip", e);
+			return;
+		}
+		// Push to the host first and unconditionally. This is the channel the vehicle's cluster
+		// navigation page and head-up display read, so it has to keep flowing regardless of whether
+		// the car screen happens to be showing.
+		pushTripToHost(navigationManager, trip);
+		publishTripSnapshot(tripHelper, trip);
+
+		NavigationScreen navigationScreen = getNavigationScreen();
+		if (navigationScreen == null) {
+			startNavigationScreen();
+			navigationScreen = getNavigationScreen();
+		}
+		if (navigationScreen != null) {
+			List<Destination> destinations = null;
+			Destination destination = tripHelper.getLastDestination();
+			TravelEstimate destinationTravelEstimate = tripHelper.getLastDestinationTravelEstimate();
+			if (destination != null) {
+				destinations = Collections.singletonList(destination);
 			}
+			TravelEstimate lastStepTravelEstimate = tripHelper.getLastStepTravelEstimate();
+			navigationScreen.updateTrip(true, routingHelper.isRouteBeingCalculated(),
+					routingHelper.isRouteWasFinished(),
+					destinations, trip.getSteps(), destinationTravelEstimate,
+					lastStepTravelEstimate != null ? lastStepTravelEstimate.getRemainingDistance() : null,
+					true, true, null);
+		}
+	}
+
+	/**
+	 * Publishes the current navigation state for the instrument-cluster session to render. Cheap and
+	 * allocation-light: it runs once per location fix.
+	 */
+	private void publishTripSnapshot(@NonNull TripHelper tripHelper, @NonNull Trip trip) {
+		List<Step> steps = trip.getSteps();
+		Step currentStep = steps.isEmpty() ? null : steps.get(0);
+		TravelEstimate stepEstimate = tripHelper.getLastStepTravelEstimate();
+		getApp().setCarTripSnapshot(new TripSnapshot(true,
+				routingHelper.isRouteBeingCalculated(),
+				routingHelper.isRouteWasFinished(),
+				currentStep,
+				stepEstimate != null ? stepEstimate.getRemainingDistance() : null,
+				tripHelper.getLastDestinationTravelEstimate()));
+	}
+
+	/**
+	 * Sends a Trip to the Android Auto host.
+	 *
+	 * <p>This is the feed the vehicle's instrument-cluster navigation page and head-up display read,
+	 * so a transient rejection must not silence it for the rest of the drive. An
+	 * {@code IllegalStateException} means the host believes we are not navigating;
+	 * {@code navigationStarted()} is idempotent, so re-arm and retry rather than giving up.
+	 */
+	private void pushTripToHost(@NonNull NavigationManager navigationManager, @NonNull Trip trip) {
+		try {
+			navigationManager.updateTrip(trip);
+			tripUpdateFailures = 0;
+		} catch (IllegalStateException e) {
+			if (++tripUpdateFailures <= MAX_TRIP_UPDATE_FAILURES) {
+				LOG.warn("Host rejected the trip update, re-arming car navigation", e);
+				try {
+					navigationManager.navigationStarted();
+					navigationManager.updateTrip(trip);
+					tripUpdateFailures = 0;
+				} catch (RuntimeException retryFailed) {
+					LOG.warn("Could not re-arm car navigation", retryFailed);
+				}
+			} else {
+				LOG.error("Giving up on trip updates after " + tripUpdateFailures + " failures", e);
+				carNavigationShouldBeActive = false;
+			}
+		} catch (RuntimeException e) {
+			// Transport-level problems are transient; keep the loop alive.
+			LOG.warn("Could not send the trip update", e);
 		}
 	}
 

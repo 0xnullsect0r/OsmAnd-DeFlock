@@ -45,7 +45,9 @@ import net.osmand.plus.activities.RestartActivity;
 import net.osmand.plus.api.SQLiteAPI;
 import net.osmand.plus.api.SQLiteAPIImpl;
 import net.osmand.plus.auto.NavigationCarAppService;
+import net.osmand.plus.auto.ClusterSession;
 import net.osmand.plus.auto.NavigationSession;
+import net.osmand.plus.auto.TripSnapshot;
 import net.osmand.plus.auto.screens.NavigationScreen;
 import net.osmand.plus.avoidroads.AvoidRoadsHelper;
 import net.osmand.plus.backup.AutoBackupHelper;
@@ -157,6 +159,11 @@ public class OsmandApplication extends MultiDexApplication {
 
 	NavigationCarAppService navigationCarAppService;
 	NavigationSession carNavigationSession;
+	// Kept apart from carNavigationSession on purpose: setCarNavigationSession(null) stops or pauses
+	// navigation via RoutingHelper.onCarNavigationSessionChanged(), so an instrument-cluster display
+	// appearing or disappearing must never be routed through that field.
+	ClusterSession clusterNavigationSession;
+	volatile TripSnapshot carTripSnapshot;
 	OnRequestPermissionsResultCallback carAppPermissionListener;
 
 	private final SQLiteAPI sqliteAPI = new SQLiteAPIImpl(this);
@@ -801,6 +808,29 @@ public class OsmandApplication extends MultiDexApplication {
 	@Nullable
 	public NavigationSession getCarNavigationSession() {
 		return carNavigationSession;
+	}
+
+	@Nullable
+	public ClusterSession getClusterNavigationSession() {
+		return clusterNavigationSession;
+	}
+
+	public void setClusterNavigationSession(@Nullable ClusterSession clusterNavigationSession) {
+		this.clusterNavigationSession = clusterNavigationSession;
+	}
+
+	/** The latest navigation state published for the instrument cluster, or null when idle. */
+	@Nullable
+	public TripSnapshot getCarTripSnapshot() {
+		return carTripSnapshot;
+	}
+
+	public void setCarTripSnapshot(@Nullable TripSnapshot snapshot) {
+		this.carTripSnapshot = snapshot;
+		ClusterSession cluster = clusterNavigationSession;
+		if (cluster != null) {
+			cluster.invalidateScreen();
+		}
 	}
 
 	public void onCarNavigationSessionStart(@NonNull NavigationSession carNavigationSession) {

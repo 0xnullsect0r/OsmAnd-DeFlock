@@ -1178,8 +1178,16 @@
 			android:resource="@xml/car_app_desc"
 			tools:ignore="MetadataTagInsideApplicationTag" />
 
+		<!--
+			The code unconditionally builds MapWithContentTemplate, which is Car App API level 7
+			(verified against androidx.car.app 1.7.0). Declaring level 1 let hosts below 7 connect
+			and then fail at template-build time. Level 7 also clears the level-6 floor that
+			instrument-cluster support requires. If the app ever fails to appear on an older host,
+			lower this to 6 and add getCarAppApiLevel() fallbacks for the MapWithContentTemplate
+			screens (RoutePreview, MapMagnifier, DestinationReached, Confirm, PrivateAccess).
+		-->
 		<meta-data android:name="androidx.car.app.minCarApiLevel"
-			android:value="1"
+			android:value="7"
 			tools:ignore="MetadataTagInsideApplicationTag" />
 
 		<service
@@ -1191,6 +1199,14 @@
 			<intent-filter>
 				<action android:name="androidx.car.app.CarAppService" />
 				<category android:name="androidx.car.app.category.NAVIGATION"/>
+				<!--
+					Declares that this app can render its own content on a vehicle's instrument
+					cluster. Handled by ClusterSession, which is deliberately kept away from the map
+					renderer and the NavigationManager. If the app ever stops appearing in the
+					Android Auto launcher, remove this category first - it is the newest thing the
+					host has to negotiate.
+				-->
+				<category android:name="androidx.car.app.category.FEATURE_CLUSTER"/>
 			</intent-filter>
 		</service>
 	</application>
